@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Vaccinator {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String
+  phone     String
+  createdAt DateTime @default(now())
+}
+
+model Schedule {
+  id          Int      @id @default(autoincrement())
+  vaccinator  String
+  date        String
+  time        String
+  status      String
+  createdAt   DateTime @default(now())
+}
+
+model Detetization {
+  id                Int      @id @default(autoincrement())
+  galpao            String
+  produto           String
+  responsavel       String
+  data              String
+  observacao        String
+  vaccineDate       String
+  detetizationDate  String
+  status            String
+  createdAt         DateTime @default(now())
+}
+
+model BirdLot {
+  id              Int      @id @default(autoincrement())
+  lote            String
+  proprietario    String
+  cidade          String
+  linhagem        String
+  avesAlojadas    Int
+  dataAlojamento  String
+  idadeAtual      Int
+  ranchoAtual     String   @default("Pinteiro")
+  movimentacoes   Json?
+  observacoes     String   @default("")
+  status          String
+  createdAt       DateTime @default(now())
+}
+
+model AppState {
+  id        String   @id
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

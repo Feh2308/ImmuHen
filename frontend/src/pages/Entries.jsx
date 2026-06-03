@@ -1,0 +1,420 @@
+import { useMemo, useState } from "react";
+
+import Sidebar from "../components/Sidebar";
+
+import {
+  useVaccines,
+} from "../context/VaccineContext";
+
+function parseMoney(value) {
+  const parsed = Number(String(value || "0").replace(",", "."));
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseQuantity(value) {
+  const parsed = Number(String(value || "0").replace(",", "."));
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function getEntryDoseValue(entry) {
+  if (entry.valorDose !== undefined) {
+    return Number(entry.valorDose || 0);
+  }
+
+  if (entry.valorTotal !== undefined && Number(entry.doses)) {
+    return Number(entry.valorTotal || 0) / Number(entry.doses);
+  }
+
+  if (entry.valor !== undefined && Number(entry.doses)) {
+    return Number(entry.valor || 0) / Number(entry.doses);
+  }
+
+  return 0;
+}
+
+function getEntryTotalValue(entry) {
+  if (entry.valorTotal !== undefined) {
+    return Number(entry.valorTotal || 0);
+  }
+
+  if (entry.valor !== undefined) {
+    return Number(entry.valor || 0);
+  }
+
+  return Number(entry.doses || 0) * getEntryDoseValue(entry);
+}
+
+function Entries() {
+
+  const {
+    vaccines,
+    entries,
+    addEntry,
+    getStockAlertLevel,
+  } = useVaccines();
+
+  const [vaccineId, setVaccineId] =
+    useState("");
+
+  const [lote, setLote] =
+    useState("");
+
+  const [validade, setValidade] =
+    useState("");
+
+  const [doses, setDoses] =
+    useState("");
+
+  const [lowStockAlertQuantity, setLowStockAlertQuantity] =
+    useState("");
+
+  const [valorDose, setValorDose] =
+    useState("");
+
+  const [fornecedor, setFornecedor] =
+    useState("");
+
+  const [observacao, setObservacao] =
+    useState("");
+
+  const totalEntrada = useMemo(() => {
+    return parseQuantity(doses) * parseMoney(valorDose);
+  }, [doses, valorDose]);
+
+  const selectedAlertLevel = vaccineId
+    ? getStockAlertLevel(vaccineId)
+    : 0;
+
+  function registrarEntrada() {
+
+    if (
+      !vaccineId ||
+      !lote ||
+      !doses ||
+      !valorDose
+    ) {
+      alert("Preencha vacina, lote, doses e valor por dose");
+      return;
+    }
+
+    const vacina =
+      vaccines.find(
+        (v) => v.id == vaccineId
+      );
+
+    addEntry({
+      id: Date.now(),
+
+      vaccineId,
+
+      vacina: vacina.nome,
+
+      codigo: vacina.codigo,
+
+      lote,
+
+      validade,
+
+      doses: parseQuantity(doses),
+
+      valorDose: parseMoney(valorDose),
+
+      valorTotal: totalEntrada,
+
+      valor: totalEntrada,
+
+      fornecedor,
+
+      observacao,
+
+      lowStockAlertQuantity: parseQuantity(lowStockAlertQuantity),
+
+      data:
+        new Date().toLocaleDateString(),
+    });
+
+    setLote("");
+    setValidade("");
+    setDoses("");
+    setLowStockAlertQuantity("");
+    setValorDose("");
+    setFornecedor("");
+    setObservacao("");
+  }
+
+  return (
+    <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-white">
+
+      <Sidebar />
+
+      <div className="flex-1 p-8">
+
+        <div className="bg-white rounded-3xl p-8 border border-green-100 shadow-sm">
+
+          <h1 className="text-5xl font-bold text-zinc-900">
+            Entradas
+          </h1>
+
+          <p className="text-zinc-500 mt-2">
+            Registro de entradas de vacinas.
+          </p>
+
+        </div>
+
+        <div className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm">
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+            <select
+              value={vaccineId}
+              onChange={(e) =>
+                setVaccineId(e.target.value)
+              }
+              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+            >
+
+              <option value="">
+                Selecione Vacina
+              </option>
+
+              {vaccines.map((vacina) => (
+
+                <option
+                  key={vacina.id}
+                  value={vacina.id}
+                >
+                  {vacina.nome}
+                </option>
+
+              ))}
+
+            </select>
+
+            <input
+              type="text"
+              placeholder="Lote"
+              value={lote}
+              onChange={(e) =>
+                setLote(e.target.value)
+              }
+              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+            />
+
+            <input
+              type="date"
+              value={validade}
+              onChange={(e) =>
+                setValidade(e.target.value)
+              }
+              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+            />
+
+            <input
+              type="text"
+              placeholder="Doses"
+              value={doses}
+              onChange={(e) =>
+                setDoses(e.target.value)
+              }
+              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+              inputMode="numeric"
+            />
+
+            <input
+              type="text"
+              placeholder="Avisar estoque baixo em doses"
+              value={lowStockAlertQuantity}
+              onChange={(e) =>
+                setLowStockAlertQuantity(e.target.value)
+              }
+              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+              inputMode="numeric"
+            />
+
+            <input
+              type="text"
+              placeholder="Valor por dose"
+              value={valorDose}
+              onChange={(e) =>
+                setValorDose(e.target.value)
+              }
+              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+              inputMode="decimal"
+            />
+
+            <input
+              type="text"
+              placeholder="Fornecedor"
+              value={fornecedor}
+              onChange={(e) =>
+                setFornecedor(e.target.value)
+              }
+              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+            />
+
+            <input
+              type="text"
+              placeholder="Observacao"
+              value={observacao}
+              onChange={(e) =>
+                setObservacao(e.target.value)
+              }
+              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none md:col-span-2"
+            />
+
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-zinc-600">
+            <strong className="text-green-700">
+              Alerta de estoque baixo:
+            </strong>{" "}
+            informe a quantidade mínima de doses para esta vacina. Quando uma baixa deixar o estoque igual ou menor que esse valor, o ImmuHen envia aviso para o contato de notificação da granja.
+            {selectedAlertLevel > 0 && !lowStockAlertQuantity && (
+              <span className="ml-1 font-semibold text-green-700">
+                Limite atual dessa vacina: {selectedAlertLevel} doses.
+              </span>
+            )}
+          </div>
+
+          <div className="mt-6 bg-green-50 border border-green-100 rounded-2xl p-5">
+
+            <p className="text-zinc-500">
+              Total em R$ gasto nesta entrada
+            </p>
+
+            <h2 className="text-3xl font-bold text-green-600 mt-1">
+              {formatCurrency(totalEntrada)}
+            </h2>
+
+          </div>
+
+          <button
+            onClick={registrarEntrada}
+            className="mt-8 bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-2xl font-bold transition"
+          >
+            Registrar Entrada
+          </button>
+
+        </div>
+
+        <div className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm overflow-x-auto">
+
+          <table className="w-full text-left text-zinc-900">
+
+            <thead>
+
+              <tr className="border-b border-green-100 text-zinc-500">
+
+                <th className="pb-4">
+                  Vacina
+                </th>
+
+                <th className="pb-4">
+                  Lote
+                </th>
+
+                <th className="pb-4">
+                  Doses
+                </th>
+
+                <th className="pb-4">
+                  Valor por dose
+                </th>
+
+                <th className="pb-4">
+                  Alerta baixo
+                </th>
+
+                <th className="pb-4">
+                  Total
+                </th>
+
+                <th className="pb-4">
+                  Validade
+                </th>
+
+                <th className="pb-4">
+                  Fornecedor
+                </th>
+
+                <th className="pb-4">
+                  Observacao
+                </th>
+
+              </tr>
+
+            </thead>
+
+            <tbody>
+
+              {entries.map((entry) => (
+
+                <tr
+                  key={entry.id}
+                  className="border-b border-green-100 last:border-b-0"
+                >
+
+                  <td className="py-4">
+                    {entry.vacina}
+                  </td>
+
+                  <td>
+                    {entry.lote}
+                  </td>
+
+                  <td>
+                    {entry.doses}
+                  </td>
+
+                  <td>
+                    {formatCurrency(getEntryDoseValue(entry))}
+                  </td>
+
+                  <td>
+                    {entry.lowStockAlertQuantity
+                      ? `${entry.lowStockAlertQuantity} doses`
+                      : "-"}
+                  </td>
+
+                  <td className="font-bold text-green-600">
+                    {formatCurrency(getEntryTotalValue(entry))}
+                  </td>
+
+                  <td>
+                    {entry.validade}
+                  </td>
+
+                  <td>
+                    {entry.fornecedor}
+                  </td>
+
+                  <td className="min-w-64 max-w-xs whitespace-normal break-words text-zinc-500">
+                    {entry.observacao || "-"}
+                  </td>
+
+                </tr>
+
+              ))}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
+export default Entries;

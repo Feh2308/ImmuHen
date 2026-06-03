@@ -1,0 +1,19 @@
+{
+  "name": "ImmuHen Vacinador",
+  "short_name": "ImmuHen",
+  "description": "App do vacinador vinculado ao ImmuHen.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f0fdf4",
+  "theme_color": "#16a34a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
