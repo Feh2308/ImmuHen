@@ -12,12 +12,12 @@ function getAuthToken() {
 async function apiRequest(path, options = {}) {
   const token = getAuthToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
-    ...options,
   });
 
   if (!response.ok) {
@@ -35,11 +35,11 @@ async function apiRequest(path, options = {}) {
 async function apiBlobRequest(path, options = {}) {
   const token = getAuthToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
-    ...options,
   });
 
   if (!response.ok) {
@@ -136,6 +136,12 @@ export async function createScheduleApi(schedule) {
   return apiRequest("/api/vacitech/schedules", {
     method: "POST",
     body: JSON.stringify(schedule),
+  });
+}
+
+export async function deleteScheduleApi(id) {
+  return apiRequest(`/api/vacitech/schedules/${id}`, {
+    method: "DELETE",
   });
 }
 

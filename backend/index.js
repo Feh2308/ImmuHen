@@ -739,6 +739,8 @@ app.post("/api/vacitech/schedules", async (req, res) => {
     farmLocation: farmProfile.location || req.body.farmLocation || "",
     observations: req.body.observations || "",
     hasDebicagem: req.body.hasDebicagem || "NAO",
+    laborCost: Number(req.body.laborCost || 0),
+    programLaborCost: Number(req.body.programLaborCost || 0),
     vaccinationStartDate: req.body.vaccinationStartDate || "",
     vaccinationEndDate: req.body.vaccinationEndDate || "",
     vaccineUsages: normalizeVaccineUsages(req.body.vaccineUsages),
@@ -785,6 +787,61 @@ app.post("/api/vacitech/schedules", async (req, res) => {
   res.json({
     schedule,
     request,
+  });
+});
+
+app.delete("/api/vacitech/schedules/:id", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const schedule = tenantData.schedules.find((item) => String(item.id) === String(req.params.id));
+
+  if (!schedule) {
+    return res.status(404).json({
+      message: "Programa nao encontrado.",
+    });
+  }
+
+  const scheduleIdsToDelete = new Set(
+    tenantData.schedules
+      .filter((item) => (
+        schedule.programId
+          ? String(item.programId || "") === String(schedule.programId)
+          : String(item.id) === String(schedule.id)
+      ))
+      .map((item) => String(item.id))
+  );
+  const requestsToDelete = tenantData.requests.filter((request) => (
+    scheduleIdsToDelete.has(String(request.scheduleId)) ||
+    String(request.id) === String(req.body?.requestId || "")
+  ));
+  const requestIdsToDelete = new Set(requestsToDelete.map((request) => String(request.id)));
+
+  tenantData.schedules = tenantData.schedules.filter((item) => (
+    !scheduleIdsToDelete.has(String(item.id))
+  ));
+  tenantData.requests = tenantData.requests.filter((request) => (
+    !requestIdsToDelete.has(String(request.id)) &&
+    !scheduleIdsToDelete.has(String(request.scheduleId))
+  ));
+  tenantData.notifications = tenantData.notifications.filter((notification) => (
+    !requestIdsToDelete.has(String(notification.requestId || "")) &&
+    !scheduleIdsToDelete.has(String(notification.scheduleId || ""))
+  ));
+  tenantData.notificationOutbox = tenantData.notificationOutbox.filter((item) => (
+    !requestIdsToDelete.has(String(item.requestId || "")) &&
+    !scheduleIdsToDelete.has(String(item.scheduleId || ""))
+  ));
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    success: true,
+    deletedScheduleIds: Array.from(scheduleIdsToDelete),
+    deletedRequestIds: Array.from(requestIdsToDelete),
+    schedules: tenantData.schedules,
+    requests: tenantData.requests,
+    notifications: tenantData.notifications,
   });
 });
 
@@ -2451,7 +2508,7 @@ async function fetchMercadoPagoPayment(paymentId) {
   return data;
 }
 
-function normalizeVaccinator(data) {
+function normalizeVaccinator(data = {}) {
   return {
     id: data.id || Date.now(),
     name: String(data.name || "").trim(),
@@ -2516,6 +2573,21 @@ function formatQuantity(value) {
   return parsed.toLocaleString("pt-BR", {
     maximumFractionDigits: 2,
   });
+}
+
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function getLaborCost(record = {}) {
+  return Number(record.programLaborCost ?? record.laborCost ?? 0) || 0;
+}
+
+function getVaccinationTotalDoses(request = {}) {
+  return buildVaccinationMaterials(request).reduce((total, usage) => total + Number(usage.doses || 0), 0);
 }
 
 function getUsageTechnicalText(item) {
@@ -3112,6 +3184,8 @@ function sendVaccinationCompletionPdf(res, request) {
   doc.moveDown();
   writePdfField(doc, "Periodo da vacinacao:", `${request.vaccinationStartDate || request.date || "-"} ate ${request.vaccinationEndDate || request.date || "-"}`);
   writePdfField(doc, "Debicagem:", request.hasDebicagem === "SIM" ? "Sim" : "Nao");
+  writePdfField(doc, "Doses usadas:", formatQuantity(getVaccinationTotalDoses(request)) || "0");
+  writePdfField(doc, "Mao de obra:", formatCurrency(getLaborCost(request)));
   writePdfField(doc, "Concluida pelo vacinador em:", request.completedAt);
   writePdfField(doc, "Confirmada pela granja em:", request.systemConfirmedAt);
   writePdfField(doc, "Execucao:", request.completionTiming || "PONTUAL");

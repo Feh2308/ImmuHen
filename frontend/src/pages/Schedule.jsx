@@ -13,9 +13,9 @@ import {
 import {
   API_BASE_URL,
   createScheduleApi,
+  deleteScheduleApi,
   fetchSharedStateApi,
   updateRequestVaccinesApi,
-  updateRequestStatusApi,
 } from "../services/vacitechApi";
 import { useVaccines } from "../context/VaccineContext";
 
@@ -848,36 +848,32 @@ function Schedule() {
   }
 
   async function cancelSchedule(id) {
-    const nextSchedules = schedules.filter(
-      (schedule) => schedule.id !== id
+    const scheduleToCancel = schedules.find((schedule) => String(schedule.id) === String(id));
+
+    if (!scheduleToCancel) {
+      return;
+    }
+
+    const cancelWholeProgram = Boolean(scheduleToCancel.programId);
+    const confirmed = window.confirm(
+      cancelWholeProgram
+        ? "Excluir este programa inteiro?\n\nTodas as vacinacoes deste programa vao sair do sistema principal e do app do vacinador."
+        : "Excluir esta vacinacao?\n\nEla vai sair do sistema principal e do app do vacinador."
     );
 
-    const canceledAt = new Date().toLocaleString("pt-BR");
-    const nextRequests = readJson("requests", []).map((request) => {
-      if (String(request.scheduleId) !== String(id)) {
-        return request;
-      }
+    if (!confirmed) {
+      return;
+    }
 
-      return {
-        ...request,
-        status: "RECUSADA",
-        answeredAt: canceledAt,
-      };
-    });
+    try {
+      const data = await deleteScheduleApi(id);
 
-    writeJson("requests", nextRequests);
-    setSchedules(nextSchedules);
-
-    const relatedRequest = nextRequests.find((request) => (
-      String(request.scheduleId) === String(id)
-    ));
-
-    if (relatedRequest) {
-      try {
-        await updateRequestStatusApi(relatedRequest.id, "RECUSADA");
-      } catch (error) {
-        console.log(error);
-      }
+      setSchedules(data.schedules || []);
+      writeJson("requests", data.requests || []);
+      writeJson("vaccinatorNotifications", data.notifications || []);
+    } catch (error) {
+      console.log(error);
+      alert(error.message || "Nao foi possivel excluir no servidor. Tente novamente.");
     }
   }
 
