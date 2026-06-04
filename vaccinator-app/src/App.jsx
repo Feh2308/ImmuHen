@@ -94,6 +94,60 @@ function formatQuantity(value) {
   });
 }
 
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function getLaborCost(record) {
+  return parseQuantity(record?.programLaborCost ?? record?.laborCost ?? 0);
+}
+
+function getRequestTotalDoses(request) {
+  return (request.vaccineUsages || []).reduce((total, usage) => total + Number(usage.doses || 0), 0);
+}
+
+function getRecordDateValue(record) {
+  return (
+    record?.vaccinationStartDate ||
+    record?.date ||
+    record?.programStartDate ||
+    "9999-12-31"
+  );
+}
+
+function getProgramDayValue(record) {
+  const parsed = Number(record?.programDay || 0);
+
+  return parsed > 0 ? parsed : 9999;
+}
+
+function sortVaccinationRecords(first, second) {
+  const firstDate = getRecordDateValue(first);
+  const secondDate = getRecordDateValue(second);
+
+  if (firstDate !== secondDate) {
+    return firstDate.localeCompare(secondDate);
+  }
+
+  const firstProgram = String(first?.programId || "");
+  const secondProgram = String(second?.programId || "");
+
+  if (firstProgram !== secondProgram) {
+    return firstProgram.localeCompare(secondProgram);
+  }
+
+  const dayDiff = getProgramDayValue(first) - getProgramDayValue(second);
+
+  if (dayDiff !== 0) {
+    return dayDiff;
+  }
+
+  return String(first?.farmName || "").localeCompare(String(second?.farmName || ""), "pt-BR");
+}
+
 function calculateBirdsPerFlask(flaskCc, dosePerBirdCc) {
   const flask = parseQuantity(flaskCc);
   const dose = parseQuantity(dosePerBirdCc);
@@ -213,18 +267,38 @@ function App() {
   const [cameraRequestId, setCameraRequestId] = useState(null);
   const [doseMessages, setDoseMessages] = useState({});
   const [postponeForms, setPostponeForms] = useState({});
+  const [farmFilter, setFarmFilter] = useState("TODAS");
   const [notificationContactDraft, setNotificationContactDraft] = useState("");
   const [notificationContactDirty, setNotificationContactDirty] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState(
     "Notification" in window ? Notification.permission : "unsupported"
   );
 
-  const activeRequests = useMemo(() => {
-    return (portalData?.requests || []).filter((request) => (
-      normalizeStatus(request.status) !== "CONCLUIDA" &&
-      normalizeStatus(request.status) !== "RECUSADA"
+  const farmFilterOptions = useMemo(() => {
+    const names = [
+      ...(portalData?.linkedFarms || []).map((farm) => farm.farmName),
+      ...(portalData?.requests || []).map((request) => request.farmName),
+    ]
+      .map((name) => String(name || "").trim())
+      .filter(Boolean);
+
+    return Array.from(new Set(names)).sort((first, second) => (
+      first.localeCompare(second, "pt-BR")
     ));
   }, [portalData]);
+
+  const activeRequests = useMemo(() => {
+    return (portalData?.requests || [])
+      .filter((request) => (
+        normalizeStatus(request.status) !== "CONCLUIDA" &&
+        normalizeStatus(request.status) !== "RECUSADA"
+      ))
+      .filter((request) => (
+        farmFilter === "TODAS" ||
+        String(request.farmName || "").trim() === farmFilter
+      ))
+      .sort(sortVaccinationRecords);
+  }, [portalData, farmFilter]);
 
   const pendingRequests = useMemo(() => {
     return activeRequests.filter((request) => (
@@ -289,6 +363,12 @@ function App() {
       setNotificationContactDraft(portalData?.vaccinator?.notificationContact || "");
     }
   }, [portalData?.vaccinator?.notificationContact, notificationContactDirty]);
+
+  useEffect(() => {
+    if (farmFilter !== "TODAS" && !farmFilterOptions.includes(farmFilter)) {
+      setFarmFilter("TODAS");
+    }
+  }, [farmFilter, farmFilterOptions]);
 
   useEffect(() => {
     function handleBeforeInstallPrompt(event) {
@@ -884,10 +964,36 @@ function App() {
         </div>
 
         <section className="panel">
-          <h2>Programas de vacinacao</h2>
+          <div className="panel-header">
+            <div>
+              <h2>Programas de vacinacao</h2>
+              <p className="muted">
+                Ordenados por granja, data e dia do programa.
+              </p>
+            </div>
+
+            <label className="farm-filter">
+              Granja
+              <select
+                value={farmFilter}
+                onChange={(event) => setFarmFilter(event.target.value)}
+              >
+                <option value="TODAS">Todas as granjas</option>
+                {farmFilterOptions.map((farmName) => (
+                  <option key={farmName} value={farmName}>
+                    {farmName}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           {activeRequests.length === 0 && (
-            <p className="muted">Nenhum programa recebido.</p>
+            <p className="muted">
+              {farmFilter === "TODAS"
+                ? "Nenhum programa recebido."
+                : "Nenhum programa recebido para esta granja."}
+            </p>
           )}
 
           {activeRequests.map((request) => {
@@ -926,6 +1032,14 @@ function App() {
                   <div>
                     <span>Via</span>
                     <strong>{request.applicationMethod || request.vaccineUsages?.[0]?.applicationMethod || "-"}</strong>
+                  </div>
+                  <div>
+                    <span>Doses usadas</span>
+                    <strong>{formatQuantity(getRequestTotalDoses(request))}</strong>
+                  </div>
+                  <div>
+                    <span>Mao de obra</span>
+                    <strong>{formatCurrency(getLaborCost(request))}</strong>
                   </div>
                 </div>
 

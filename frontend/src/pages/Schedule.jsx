@@ -181,6 +181,52 @@ function formatCurrency(value) {
   });
 }
 
+function getLaborCost(record) {
+  return parseQuantity(record?.programLaborCost ?? record?.laborCost ?? 0);
+}
+
+function getRecordDateValue(record) {
+  return (
+    record?.vaccinationStartDate ||
+    record?.date ||
+    record?.programStartDate ||
+    "9999-12-31"
+  );
+}
+
+function getProgramDayValue(record) {
+  const parsed = Number(record?.programDay || 0);
+
+  return parsed > 0 ? parsed : 9999;
+}
+
+function sortVaccinationRecords(first, second) {
+  const firstDate = getRecordDateValue(first);
+  const secondDate = getRecordDateValue(second);
+
+  if (firstDate !== secondDate) {
+    return firstDate.localeCompare(secondDate);
+  }
+
+  const firstProgram = String(first?.programId || "");
+  const secondProgram = String(second?.programId || "");
+
+  if (firstProgram !== secondProgram) {
+    return firstProgram.localeCompare(secondProgram);
+  }
+
+  const dayDiff = getProgramDayValue(first) - getProgramDayValue(second);
+
+  if (dayDiff !== 0) {
+    return dayDiff;
+  }
+
+  return String(first?.birdLotName || first?.farmName || "").localeCompare(
+    String(second?.birdLotName || second?.farmName || ""),
+    "pt-BR"
+  );
+}
+
 function formatDate(date) {
   if (!date) {
     return "-";
@@ -277,6 +323,7 @@ function Schedule() {
     hasDebicagem: "NAO",
     vaccinationStartDate: "",
     vaccinationEndDate: "",
+    laborCost: "",
     monthlyMonth: "",
     monthlyWeekday: "1",
     monthlyVaccinationDays: "1",
@@ -290,11 +337,15 @@ function Schedule() {
   const availableRanches = ranchOptions.length
     ? ranchOptions
     : [{ id: "rancho-pinteiro", name: "Pinteiro" }];
-  const activeSchedules = schedules.filter((schedule) => {
-    const status = normalizeRequestStatus(schedule.status);
+  const activeSchedules = useMemo(() => (
+    schedules
+      .filter((schedule) => {
+        const status = normalizeRequestStatus(schedule.status);
 
-    return status !== "CONCLUIDA" && status !== "RECUSADA";
-  });
+        return status !== "CONCLUIDA" && status !== "RECUSADA";
+      })
+      .sort(sortVaccinationRecords)
+  ), [schedules]);
   const overdueNotifications = notifications
     .filter((notification) => notification.type === "OVERDUE_VACCINATION")
     .slice(-6)
@@ -337,6 +388,60 @@ function Schedule() {
         String(first.programEndDate || "").localeCompare(String(second.programEndDate || ""))
       ));
   }, [birdLots, schedules]);
+
+  const programLotSummaries = useMemo(() => {
+    const groups = new Map();
+
+    schedules.forEach((schedule) => {
+      const status = normalizeRequestStatus(schedule.status);
+
+      if (status === "RECUSADA" || (!schedule.programId && !schedule.birdLotId)) {
+        return;
+      }
+
+      const key = schedule.programId || `lote-${schedule.birdLotId || schedule.id}`;
+      const current = groups.get(key) || {
+        id: key,
+        programId: schedule.programId || "",
+        birdLotId: schedule.birdLotId || "",
+        birdLotName: schedule.birdLotName || "Lote nao informado",
+        programStartDate: schedule.programStartDate || schedule.vaccinationStartDate || "",
+        programEndDate: schedule.programEndDate || schedule.vaccinationEndDate || "",
+        totalDoses: 0,
+        vaccineCost: 0,
+        laborCost: 0,
+        vaccines: {},
+      };
+
+      const usages = Array.isArray(schedule.vaccineUsages) ? schedule.vaccineUsages : [];
+
+      current.totalDoses += getScheduleTotalDoses(schedule);
+      current.vaccineCost += getScheduleVaccineCost(schedule);
+      current.laborCost = Math.max(current.laborCost, getLaborCost(schedule));
+
+      usages.forEach((usage) => {
+        const name = usage.vacina || getVaccine(usage.vaccineId)?.nome || "Vacina";
+        const vaccineKey = usage.vaccineId || name;
+
+        current.vaccines[vaccineKey] = current.vaccines[vaccineKey] || {
+          name,
+          doses: 0,
+        };
+        current.vaccines[vaccineKey].doses += Number(usage.doses || 0);
+      });
+
+      groups.set(key, current);
+    });
+
+    return Array.from(groups.values())
+      .filter((summary) => summary.totalDoses > 0)
+      .map((summary) => ({
+        ...summary,
+        totalCost: summary.vaccineCost + summary.laborCost,
+        vaccines: Object.values(summary.vaccines),
+      }))
+      .sort((first, second) => String(second.programStartDate || "").localeCompare(String(first.programStartDate || "")));
+  }, [entries, schedules, vaccines]);
 
   useEffect(() => {
     writeJson("schedules", schedules);
@@ -420,6 +525,7 @@ function Schedule() {
       hasDebicagem: "NAO",
       vaccinationStartDate: "",
       vaccinationEndDate: "",
+      laborCost: "",
       monthlyMonth: "",
       monthlyWeekday: "1",
       monthlyVaccinationDays: "1",
@@ -619,11 +725,78 @@ function Schedule() {
           programDay: row.programDay,
           suggestedName: row.suggestedName,
           unitCost,
+          totalDoses: usage.doses,
           totalCost: unitCost * usage.doses,
           stock: calculateStock(usage.vaccineId),
         };
       }))
       .filter((usage) => usage.vaccineId && usage.doses > 0);
+  }
+
+  function getCurrentPeriodMultiplier() {
+    if (form.scheduleMode !== "MES_INTEIRO") {
+      return 1;
+    }
+
+    return Math.max(1, getDatesForWeekdayInMonth(form.monthlyMonth, form.monthlyWeekday).length || 1);
+  }
+
+  function getNonProgramSimulationRows() {
+    const multiplier = getCurrentPeriodMultiplier();
+
+    return getNormalizedVaccineUsages()
+      .filter((usage) => usage.vaccineId && usage.doses > 0)
+      .map((usage) => {
+        const unitCost = getAverageDoseCost(usage.vaccineId);
+
+        return {
+          ...usage,
+          unitCost,
+          totalDoses: usage.doses * multiplier,
+          totalCost: unitCost * usage.doses * multiplier,
+          stock: calculateStock(usage.vaccineId),
+        };
+      });
+  }
+
+  function getFormSimulationRows() {
+    return form.scheduleMode === "PROGRAMA_120_DIAS"
+      ? getProgramSimulationRows()
+      : getNonProgramSimulationRows();
+  }
+
+  function getFormVaccineCost() {
+    return getFormSimulationRows().reduce((total, row) => total + Number(row.totalCost || 0), 0);
+  }
+
+  function getFormTotalDoses() {
+    return getFormSimulationRows().reduce((total, row) => total + Number(row.totalDoses || row.doses || 0), 0);
+  }
+
+  function getFormLaborCost() {
+    return parseQuantity(form.laborCost);
+  }
+
+  function getFormTotalCost() {
+    return getFormVaccineCost() + getFormLaborCost();
+  }
+
+  function getScheduleTotalDoses(schedule) {
+    return (schedule.vaccineUsages || []).reduce((total, usage) => total + Number(usage.doses || 0), 0);
+  }
+
+  function getScheduleVaccineCost(schedule) {
+    return (schedule.vaccineUsages || []).reduce((total, usage) => (
+      total + (Number(usage.doses || 0) * getAverageDoseCost(usage.vaccineId))
+    ), 0);
+  }
+
+  function getScheduleTotalCost(schedule) {
+    return getScheduleVaccineCost(schedule) + getLaborCost(schedule);
+  }
+
+  function getProgramLaborCostFromRows(rows) {
+    return rows.reduce((total, row) => Math.max(total, getLaborCost(row)), 0);
   }
 
   function getUsageStockError(usages, multiplier = 1) {
@@ -857,6 +1030,7 @@ function Schedule() {
 
     const baseScheduleId = Date.now();
     const farmProfile = getFarmProfile();
+    const laborCost = getFormLaborCost();
     const savedSchedules = [];
     const savedRequests = [];
 
@@ -877,6 +1051,8 @@ function Schedule() {
         farmLocation: farmProfile.location || "",
         observations: form.observations.trim(),
         hasDebicagem: period.hasDebicagem || form.hasDebicagem,
+        laborCost: isProgramSchedule && period.sequenceIndex !== 0 ? 0 : laborCost,
+        programLaborCost: isProgramSchedule ? laborCost : 0,
         vaccinationStartDate: period.vaccinationStartDate,
         vaccinationEndDate: period.vaccinationEndDate,
         vaccineUsages: period.vaccineUsages || normalizedVaccineUsages,
@@ -945,6 +1121,9 @@ function Schedule() {
           farmLocation: savedRequest.farmLocation,
           vaccineUsages: savedRequest.vaccineUsages || period.vaccineUsages || normalizedVaccineUsages,
           applicationMethod: savedRequest.applicationMethod || period.applicationMethod || "",
+          hasDebicagem: savedRequest.hasDebicagem || period.hasDebicagem || form.hasDebicagem,
+          laborCost: savedRequest.laborCost || 0,
+          programLaborCost: savedRequest.programLaborCost || 0,
           programId: savedRequest.programId || period.programId || "",
           programDay: savedRequest.programDay || period.programDay || "",
           programSuggestedName: savedRequest.programSuggestedName || period.programSuggestedName || "",
@@ -1166,6 +1345,8 @@ function Schedule() {
         sum + (Number(usage.doses || 0) * getAverageDoseCost(usage.vaccineId))
       ), 0);
     }, 0);
+    const laborCost = getProgramLaborCostFromRows(rows);
+    const totalWithLabor = totalCost + laborCost;
     const reportWindow = window.open("", "_blank", "width=1000,height=800");
 
     if (!reportWindow) {
@@ -1199,6 +1380,7 @@ function Schedule() {
                 <th>Dia</th>
                 <th>Data</th>
                 <th>Vacina / Evento</th>
+                <th>Debicagem</th>
                 <th>Via</th>
                 <th>Doses</th>
                 <th>CC/frasco</th>
@@ -1222,6 +1404,7 @@ function Schedule() {
                     <td>${item.programDay || "-"}</td>
                     <td>${formatDate(item.vaccinationStartDate)}</td>
                     <td>${usages.map((usage) => usage.vacina).join(", ") || item.programSuggestedName || "-"}</td>
+                    <td>${item.hasDebicagem === "SIM" ? "Sim" : "Nao"}</td>
                     <td>${item.applicationMethod || usages[0]?.applicationMethod || "-"}</td>
                     <td>${doses || "-"}</td>
                     <td>${flaskCc || "-"}</td>
@@ -1234,7 +1417,9 @@ function Schedule() {
               }).join("")}
             </tbody>
           </table>
-          <p class="total">Custo estimado da janela: ${formatCurrency(totalCost)}</p>
+          <p class="total">Custo estimado das vacinas: ${formatCurrency(totalCost)}</p>
+          <p class="total">Mao de obra: ${formatCurrency(laborCost)}</p>
+          <p class="total">Total estimado da janela: ${formatCurrency(totalWithLabor)}</p>
           <script>window.print();</script>
         </body>
       </html>
@@ -1614,6 +1799,83 @@ function Schedule() {
           </section>
         )}
 
+        {programLotSummaries.length > 0 && (
+          <section className="mt-6 rounded-2xl border border-green-100 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-zinc-900">
+                  Doses usadas por lote
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Soma automatica das doses ja baixadas no programa vinculado ao lote.
+                </p>
+              </div>
+              <span className="w-fit rounded-full bg-green-100 px-4 py-2 text-sm font-bold text-green-700">
+                {programLotSummaries.length} lote(s)
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              {programLotSummaries.map((summary) => (
+                <article key={summary.id} className="rounded-xl border border-green-100 bg-green-50 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h3 className="font-bold text-zinc-900">
+                        {summary.birdLotName}
+                      </h3>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {summary.programStartDate ? `Inicio: ${formatDate(summary.programStartDate)}` : "Inicio nao informado"}
+                        {summary.programEndDate ? ` | 120 dias: ${formatDate(summary.programEndDate)}` : ""}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-green-700">
+                      {formatQuantity(summary.totalDoses)} doses
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {summary.vaccines.map((item) => (
+                      <span
+                        key={item.name}
+                        className="rounded-full bg-white px-3 py-1 text-sm font-bold text-zinc-700"
+                      >
+                        {item.name}: {formatQuantity(item.doses)}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl bg-white p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Vacinas
+                      </p>
+                      <p className="mt-1 font-bold text-zinc-900">
+                        {formatCurrency(summary.vaccineCost)}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-white p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Mao de obra
+                      </p>
+                      <p className="mt-1 font-bold text-zinc-900">
+                        {formatCurrency(summary.laborCost)}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-white p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Total
+                      </p>
+                      <p className="mt-1 font-bold text-zinc-900">
+                        {formatCurrency(summary.totalCost)}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
         <button
           type="button"
           onClick={() => setShowForm(!showForm)}
@@ -1663,6 +1925,58 @@ function Schedule() {
                   ))}
                 </select>
               </label>
+
+              <section className="grid gap-4 rounded-xl border border-green-100 bg-green-50 p-4 lg:col-span-2">
+                <div>
+                  <p className="font-bold text-zinc-900">
+                    Custos do programa
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    Informe a mao de obra e o sistema soma automaticamente com as doses previstas.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-4">
+                  <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                    Mao de obra (R$)
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={form.laborCost}
+                      onChange={(event) => updateForm("laborCost", event.target.value)}
+                      placeholder="0,00"
+                      className="rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                    />
+                  </label>
+
+                  <div className="rounded-xl border border-green-100 bg-white p-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                      Doses previstas
+                    </p>
+                    <p className="mt-2 font-bold text-zinc-900">
+                      {formatQuantity(getFormTotalDoses())}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-white p-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                      Vacinas
+                    </p>
+                    <p className="mt-2 font-bold text-zinc-900">
+                      {formatCurrency(getFormVaccineCost())}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-white p-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                      Total previsto
+                    </p>
+                    <p className="mt-2 font-bold text-zinc-900">
+                      {formatCurrency(getFormTotalCost())}
+                    </p>
+                  </div>
+                </div>
+              </section>
 
               {form.scheduleMode === "PROGRAMA_120_DIAS" && (
                 <section className="grid gap-4 rounded-xl border border-green-100 bg-green-50 p-4 lg:col-span-2">
@@ -1956,8 +2270,17 @@ function Schedule() {
                       <p className="text-xs font-bold uppercase tracking-wide text-green-700">
                         Simulacao
                       </p>
+                      <p className="mt-1 text-sm font-semibold text-zinc-600">
+                        Doses: {formatQuantity(getFormTotalDoses())}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-zinc-600">
+                        Vacinas: {formatCurrency(getFormVaccineCost())}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-zinc-600">
+                        Mao de obra: {formatCurrency(getFormLaborCost())}
+                      </p>
                       <p className="mt-1 font-bold text-zinc-900">
-                        {formatCurrency(getProgramSimulationRows().reduce((total, row) => total + row.totalCost, 0))}
+                        Total: {formatCurrency(getFormTotalCost())}
                       </p>
                     </div>
                   </div>
@@ -1989,7 +2312,7 @@ function Schedule() {
                         ) : (
                           <>
                             <div className="grid gap-3">
-                              <div className="grid gap-3 lg:grid-cols-[90px_165px_minmax(0,1fr)] xl:grid-cols-[90px_165px_minmax(0,1fr)_auto] xl:items-end">
+                              <div className="grid gap-3 lg:grid-cols-[90px_165px_150px_minmax(0,1fr)] xl:grid-cols-[90px_165px_150px_minmax(0,1fr)_auto] xl:items-end">
                                 <label className="grid gap-1 text-sm font-semibold text-zinc-700">
                                   Dia
                                   <input
@@ -2013,6 +2336,18 @@ function Schedule() {
                                     }}
                                     className="rounded-xl border border-green-100 bg-green-50 p-3 font-bold text-zinc-800 outline-none transition focus:border-green-500 focus:bg-white"
                                   />
+                                </label>
+
+                                <label className="grid gap-1 text-sm font-semibold text-zinc-700">
+                                  Debicagem
+                                  <select
+                                    value={row.hasDebicagem || "NAO"}
+                                    onChange={(event) => updateProgramRow(row.id, "hasDebicagem", event.target.value)}
+                                    className="rounded-xl border border-green-100 bg-green-50 p-3 font-bold text-zinc-800 outline-none transition focus:border-green-500 focus:bg-white"
+                                  >
+                                    <option value="NAO">Nao</option>
+                                    <option value="SIM">Sim</option>
+                                  </select>
                                 </label>
 
                                 <div className="grid gap-1 text-sm font-semibold text-zinc-700">
@@ -2233,6 +2568,33 @@ function Schedule() {
                     </p>
                     <p className="mt-2 text-lg font-bold text-zinc-900">
                       {schedule.applicationMethod || schedule.vaccineUsages?.[0]?.applicationMethod || "-"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Doses usadas
+                    </p>
+                    <p className="mt-2 text-lg font-bold text-zinc-900">
+                      {formatQuantity(getScheduleTotalDoses(schedule))}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Mao de obra
+                    </p>
+                    <p className="mt-2 text-lg font-bold text-zinc-900">
+                      {formatCurrency(getLaborCost(schedule))}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Custo total
+                    </p>
+                    <p className="mt-2 text-lg font-bold text-zinc-900">
+                      {formatCurrency(getScheduleTotalCost(schedule))}
                     </p>
                   </div>
 

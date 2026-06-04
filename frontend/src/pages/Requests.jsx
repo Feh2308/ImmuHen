@@ -32,6 +32,63 @@ function formatQuantity(value) {
   });
 }
 
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function getLaborCost(record) {
+  return parseQuantity(record?.programLaborCost ?? record?.laborCost ?? 0);
+}
+
+function getRequestTotalDoses(request) {
+  return (request.vaccineUsages || []).reduce((total, usage) => total + Number(usage.doses || 0), 0);
+}
+
+function getRecordDateValue(record) {
+  return (
+    record?.vaccinationStartDate ||
+    record?.date ||
+    record?.programStartDate ||
+    "9999-12-31"
+  );
+}
+
+function getProgramDayValue(record) {
+  const parsed = Number(record?.programDay || 0);
+
+  return parsed > 0 ? parsed : 9999;
+}
+
+function sortVaccinationRecords(first, second) {
+  const firstDate = getRecordDateValue(first);
+  const secondDate = getRecordDateValue(second);
+
+  if (firstDate !== secondDate) {
+    return firstDate.localeCompare(secondDate);
+  }
+
+  const firstProgram = String(first?.programId || "");
+  const secondProgram = String(second?.programId || "");
+
+  if (firstProgram !== secondProgram) {
+    return firstProgram.localeCompare(secondProgram);
+  }
+
+  const dayDiff = getProgramDayValue(first) - getProgramDayValue(second);
+
+  if (dayDiff !== 0) {
+    return dayDiff;
+  }
+
+  return String(first?.farmName || first?.birdLotName || "").localeCompare(
+    String(second?.farmName || second?.birdLotName || ""),
+    "pt-BR"
+  );
+}
+
 function calculateBirdsPerFlask(flaskCc, dosePerBirdCc) {
   const flask = parseQuantity(flaskCc);
   const dose = parseQuantity(dosePerBirdCc);
@@ -109,7 +166,7 @@ function getRecordSummary(record) {
 function shouldShowRequest(request) {
   const status = normalizeRequestStatus(request.status);
 
-  return status !== "CONCLUIDA" && status !== "RECUSADA";
+  return status !== "RECUSADA" && !request.systemConfirmedAtIso && !request.archivedAtIso;
 }
 
 function Requests() {
@@ -150,18 +207,22 @@ function Requests() {
 
   useEffect(() => {
     loadRequests();
+    const refreshInterval = window.setInterval(loadRequests, 5000);
 
     window.addEventListener("storage", loadRequests);
     window.addEventListener("vacitech-storage", loadRequests);
 
     return () => {
+      window.clearInterval(refreshInterval);
       window.removeEventListener("storage", loadRequests);
       window.removeEventListener("vacitech-storage", loadRequests);
     };
   }, []);
 
   const activeRequests = useMemo(() => (
-    requests.filter(shouldShowRequest)
+    requests
+      .filter(shouldShowRequest)
+      .sort(sortVaccinationRecords)
   ), [requests]);
 
   const counters = useMemo(() => {
@@ -574,7 +635,7 @@ function Requests() {
 
         <section className="mt-6 rounded-2xl border border-green-100 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap gap-3">
-            {["TODAS", "PENDENTE", "CONFIRMADA", "EM_ANDAMENTO"].map((status) => (
+            {["TODAS", "PENDENTE", "CONFIRMADA", "EM_ANDAMENTO", "CONCLUIDA"].map((status) => (
               <button
                 key={status}
                 type="button"
@@ -753,6 +814,24 @@ function Requests() {
                     </p>
                     <p className="mt-2 font-bold text-zinc-900">
                       {request.hasDebicagem === "SIM" ? "Sim" : "Nao"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Doses usadas
+                    </p>
+                    <p className="mt-2 font-bold text-zinc-900">
+                      {formatQuantity(getRequestTotalDoses(request))}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Mao de obra
+                    </p>
+                    <p className="mt-2 font-bold text-zinc-900">
+                      {formatCurrency(getLaborCost(request))}
                     </p>
                   </div>
 

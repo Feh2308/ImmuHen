@@ -123,6 +123,7 @@ label {
 }
 
 input,
+select,
 textarea {
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
@@ -133,6 +134,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   background: #ffffff;
   border-color: #16a34a;
@@ -296,6 +298,14 @@ textarea:focus {
   display: flex;
   gap: 12px;
   justify-content: space-between;
+}
+
+.panel-header .muted {
+  margin-top: 4px;
+}
+
+.farm-filter {
+  min-width: 220px;
 }
 
 .compact-button {
@@ -464,7 +474,7 @@ textarea:focus {
 }
 
 .request-details {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
   margin-top: 16px;
 }
 
@@ -563,8 +573,14 @@ textarea:focus {
 
 @media (max-width: 860px) {
   .topbar,
+  .panel-header,
   .request-head {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .farm-filter {
+    min-width: 0;
   }
 
   .summary-grid,
