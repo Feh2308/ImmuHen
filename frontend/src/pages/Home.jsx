@@ -2,14 +2,15 @@ import Sidebar from "../components/Sidebar";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
-  API_BASE_URL,
   PAYMENTS_ENABLED,
   createSubscriptionCheckoutApi,
   createSubscriptionPixApi,
+  fetchBirdLotsApi,
   fetchSharedStateApi,
   fetchSubscriptionStatusApi,
 } from "../services/vacitechApi";
 import {
+  clearAccountSession,
   getFarmProfile,
   hasCompleteFarmProfile,
   writeJson,
@@ -46,11 +47,7 @@ function Welcome() {
 
       try {
 
-        const response = await fetch(
-          `${API_BASE_URL}/birdlots`
-        );
-
-        const lots = await response.json();
+        const lots = await fetchBirdLotsApi();
 
         const activeLots = lots.filter(
           (lot) => String(lot.status || "").toLowerCase() === "ativo"
@@ -129,8 +126,7 @@ function Welcome() {
   }, []);
 
   function closeSystem() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearAccountSession();
     sessionStorage.removeItem("stockAuthorized");
     navigate("/");
   }

@@ -9,6 +9,7 @@ import {
   matchesVaccinator,
   normalizeRequestStatus,
   readJson,
+  removeJson,
   writeJson,
 } from "../utils/vacitechStorage";
 
@@ -145,7 +146,7 @@ function VaccinatorPortal() {
   }
 
   function logout() {
-    localStorage.removeItem("vaccinatorPortalSession");
+    removeJson("vaccinatorPortalSession");
     setSession(null);
     setVaccinator(null);
     setEmail("");

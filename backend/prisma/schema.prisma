@@ -39,6 +39,7 @@ model Detetization {
 
 model BirdLot {
   id              Int      @id @default(autoincrement())
+  tenantId        String   @default("legacy")
   lote            String
   proprietario    String
   cidade          String
@@ -51,6 +52,8 @@ model BirdLot {
   observacoes     String   @default("")
   status          String
   createdAt       DateTime @default(now())
+
+  @@index([tenantId])
 }
 
 model AppState {

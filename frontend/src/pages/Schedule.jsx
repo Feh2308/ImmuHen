@@ -11,15 +11,14 @@ import {
   writeJson,
 } from "../utils/vacitechStorage";
 import {
-  API_BASE_URL,
   createScheduleApi,
   deleteScheduleApi,
+  fetchBirdLotsApi,
   fetchSharedStateApi,
+  saveBirdLotApi,
   updateRequestVaccinesApi,
 } from "../services/vacitechApi";
 import { useVaccines } from "../context/VaccineContext";
-
-const API_URL = API_BASE_URL;
 
 const WEEKDAYS = [
   { value: "0", label: "Domingo" },
@@ -62,29 +61,11 @@ const PROGRAM_120_DAY_TEMPLATE = [
 ];
 
 function getStoredSchedules() {
-  try {
-    const storedSchedules = localStorage.getItem("schedules");
-
-    return storedSchedules
-      ? JSON.parse(storedSchedules)
-      : [];
-  } catch (error) {
-    console.log(error);
-    return [];
-  }
+  return readJson("schedules", []);
 }
 
 function getStoredVaccinators() {
-  try {
-    const storedVaccinators = localStorage.getItem("vaccinators");
-
-    return storedVaccinators
-      ? JSON.parse(storedVaccinators)
-      : [];
-  } catch (error) {
-    console.log(error);
-    return [];
-  }
+  return readJson("vaccinators", []);
 }
 
 function toDateInputValue(date) {
@@ -468,8 +449,7 @@ function Schedule() {
   useEffect(() => {
     async function loadBirdLots() {
       try {
-        const response = await fetch(`${API_URL}/birdlots`);
-        const data = await response.json();
+        const data = await fetchBirdLotsApi();
 
         setBirdLots(Array.isArray(data) ? data : []);
       } catch (error) {
@@ -1509,8 +1489,7 @@ function getMapsLink(location) {
 
   async function refreshBirdLots() {
     try {
-      const response = await fetch(`${API_URL}/birdlots`);
-      const data = await response.json();
+      const data = await fetchBirdLotsApi();
 
       setBirdLots(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -1566,40 +1545,28 @@ function getMapsLink(location) {
       status: lot.status || "Ativo",
     };
 
-    await fetch(`${API_URL}/birdlots/${lot.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        ...basePayload,
-        avesAlojadas: firstDestination.avesAlojadas,
-        ranchoAtual: firstDestination.ranchoAtual,
-      }),
-    });
+    await saveBirdLotApi({
+      ...basePayload,
+      avesAlojadas: firstDestination.avesAlojadas,
+      ranchoAtual: firstDestination.ranchoAtual,
+    }, lot.id);
 
     for (const destination of extraDestinations) {
-      await fetch(`${API_URL}/birdlots`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...basePayload,
-          avesAlojadas: destination.avesAlojadas,
-          ranchoAtual: destination.ranchoAtual,
-          observacoes: `${basePayload.observacoes}\nDivisao do lote original #${lot.id}.`,
-          movimentacoes: [
-            ...originalMovements,
-            {
-              from: lot.ranchoAtual || "Pinteiro",
-              to: destination.ranchoAtual,
-              date: transferDate,
-              age: 120,
-              reason: `Transferencia 120 dias - ${program.programId}`,
-            },
-          ],
-        }),
+      await saveBirdLotApi({
+        ...basePayload,
+        avesAlojadas: destination.avesAlojadas,
+        ranchoAtual: destination.ranchoAtual,
+        observacoes: `${basePayload.observacoes}\nDivisao do lote original #${lot.id}.`,
+        movimentacoes: [
+          ...originalMovements,
+          {
+            from: lot.ranchoAtual || "Pinteiro",
+            to: destination.ranchoAtual,
+            date: transferDate,
+            age: 120,
+            reason: `Transferencia 120 dias - ${program.programId}`,
+          },
+        ],
       });
     }
 

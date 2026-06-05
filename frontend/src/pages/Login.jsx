@@ -9,6 +9,8 @@ import {
 import {
   getFarmProfile,
   hasCompleteFarmProfile,
+  notifyTenantStorageReady,
+  saveAccountSession,
   writeJson,
 } from "../utils/vacitechStorage";
 
@@ -30,14 +32,14 @@ function Login() {
     try {
       const data = await loginApi({ email, password });
 
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      writeJson("farmProfile", data.farmProfile || data.state?.farmProfile || {});
-      writeJson("vaccinators", data.state?.vaccinators || []);
-      writeJson("schedules", data.state?.schedules || []);
-      writeJson("requests", data.state?.requests || []);
-      writeJson("completedVaccinations", data.state?.completedVaccinations || []);
-      writeJson("vaccinatorNotifications", data.state?.notifications || []);
+      saveAccountSession({ token: data.token, user: data.user }, { silent: true });
+      writeJson("farmProfile", data.farmProfile || data.state?.farmProfile || {}, { silent: true });
+      writeJson("vaccinators", data.state?.vaccinators || [], { silent: true });
+      writeJson("schedules", data.state?.schedules || [], { silent: true });
+      writeJson("requests", data.state?.requests || [], { silent: true });
+      writeJson("completedVaccinations", data.state?.completedVaccinations || [], { silent: true });
+      writeJson("vaccinatorNotifications", data.state?.notifications || [], { silent: true });
+      notifyTenantStorageReady();
 
       navigate(
         hasCompleteFarmProfile(data.farmProfile || getFarmProfile())

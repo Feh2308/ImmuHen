@@ -1,12 +1,15 @@
 import Sidebar from "../components/Sidebar";
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE_URL } from "../services/vacitechApi";
+import {
+  deleteBirdLotApi,
+  fetchBirdLotsApi,
+  fetchBirdLotsMonthlyReportPdfApi,
+  saveBirdLotApi,
+} from "../services/vacitechApi";
 import {
   getFarmProfile,
   getProfileRanches,
 } from "../utils/vacitechStorage";
-
-const API_URL = API_BASE_URL;
 
 const emptyForm = {
   linhagem: "",
@@ -63,9 +66,13 @@ function Aves() {
   }, [farmProfile, form.ranchoAtual]);
 
   async function loadLots() {
-    const response = await fetch(`${API_URL}/birdlots`);
-    const data = await response.json();
-    setLots(data);
+    try {
+      const data = await fetchBirdLotsApi();
+      setLots(data);
+    } catch (error) {
+      console.log(error);
+      setLots([]);
+    }
   }
 
   useEffect(() => {
@@ -125,18 +132,7 @@ function Aves() {
   async function saveLot(e) {
     e.preventDefault();
 
-    const url = editingLotId
-      ? `${API_URL}/birdlots/${editingLotId}`
-      : `${API_URL}/birdlots`;
-    const method = editingLotId ? "PUT" : "POST";
-
-    await fetch(url, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(form),
-    });
+    await saveBirdLotApi(form, editingLotId);
 
     setForm(emptyForm);
     setEditingLotId(null);
@@ -168,22 +164,25 @@ function Aves() {
       return;
     }
 
-    await fetch(`${API_URL}/birdlots/${id}`, {
-      method: "DELETE",
-    });
+    await deleteBirdLotApi(id);
 
     loadLots();
   }
 
-  function openMonthlyPdf() {
-    const ranchQuery = ranchFilter.trim()
-      ? `&rancho=${encodeURIComponent(ranchFilter.trim())}`
-      : "";
-
-    window.open(
-      `${API_URL}/birdlots/monthly-report/pdf?month=${selectedMonth}${ranchQuery}`,
-      "_blank"
-    );
+  async function openMonthlyPdf() {
+    try {
+      const pdfBlob = await fetchBirdLotsMonthlyReportPdfApi(selectedMonth, ranchFilter.trim());
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+      link.href = pdfUrl;
+      link.download = `relatorio-aves-${selectedMonth}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(pdfUrl);
+    } catch (error) {
+      alert(error.message);
+    }
   }
 
   return (

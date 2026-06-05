@@ -3,8 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { registerFarmAccountApi } from "../services/vacitechApi";
 import {
   DEFAULT_RANCHES,
+  notifyTenantStorageReady,
   normalizeImportantContacts,
   normalizeRanches,
+  saveAccountSession,
   writeJson,
 } from "../utils/vacitechStorage";
 
@@ -103,14 +105,14 @@ function RegisterFarm() {
         importantContacts: normalizeImportantContacts(form.importantContacts),
       });
 
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      writeJson("farmProfile", data.farmProfile || data.state?.farmProfile || {});
-      writeJson("vaccinators", data.state?.vaccinators || []);
-      writeJson("schedules", data.state?.schedules || []);
-      writeJson("requests", data.state?.requests || []);
-      writeJson("completedVaccinations", data.state?.completedVaccinations || []);
-      writeJson("vaccinatorNotifications", data.state?.notifications || []);
+      saveAccountSession({ token: data.token, user: data.user }, { silent: true });
+      writeJson("farmProfile", data.farmProfile || data.state?.farmProfile || {}, { silent: true });
+      writeJson("vaccinators", data.state?.vaccinators || [], { silent: true });
+      writeJson("schedules", data.state?.schedules || [], { silent: true });
+      writeJson("requests", data.state?.requests || [], { silent: true });
+      writeJson("completedVaccinations", data.state?.completedVaccinations || [], { silent: true });
+      writeJson("vaccinatorNotifications", data.state?.notifications || [], { silent: true });
+      notifyTenantStorageReady();
       navigate("/home");
     } catch (error) {
       setMessage(error.message);

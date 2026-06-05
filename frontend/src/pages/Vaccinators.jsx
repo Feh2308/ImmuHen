@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   appendVaccinatorNotification,
   getFarmProfile,
+  readJson,
   writeJson,
 } from "../utils/vacitechStorage";
 import {
@@ -15,16 +16,7 @@ import {
 } from "../services/vacitechApi";
 
 function getStoredVaccinators() {
-  try {
-    const storedVaccinators = localStorage.getItem("vaccinators");
-
-    return storedVaccinators
-      ? JSON.parse(storedVaccinators)
-      : [];
-  } catch (error) {
-    console.log(error);
-    return [];
-  }
+  return readJson("vaccinators", []);
 }
 
 function saveVaccinators(nextVaccinators) {

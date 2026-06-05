@@ -101,6 +101,7 @@ app.post("/login", async (req, res) => {
       token: createAuthToken(account),
       user: {
         id: account.id,
+        tenantId: account.tenantId,
         name: account.name,
         email: account.email,
         role: account.role || "admin",
@@ -178,6 +179,7 @@ app.post("/api/accounts/register", async (req, res) => {
     token: createAuthToken(account),
     user: {
       id: account.id,
+      tenantId: account.tenantId,
       name: account.name,
       email: account.email,
       role: account.role,
@@ -1565,8 +1567,44 @@ app.delete("/api/vacitech/vaccinator-portal/:id/notifications", async (req, res)
    BIRDLOTS (AVES / LOTES)
 ========================= */
 
+app.use("/birdlots", async (req, res, next) => {
+  try {
+    const data = await readVacitechData();
+    const accountContext = getRequestAccount(req, data);
+
+    if (!accountContext) {
+      return res.status(401).json({
+        message: "Entre na conta da granja para acessar os registros de aves.",
+      });
+    }
+
+    const tenantData = getTenantData(data, accountContext.account.tenantId);
+    const subscription = getSubscriptionStatus(tenantData.subscription);
+
+    if (isTenantArchived(tenantData)) {
+      return res.status(403).json({
+        message: "Esta granja esta excluida temporariamente. Fale com o administrador do ImmuHen.",
+      });
+    }
+
+    if (!subscription.active) {
+      return res.status(402).json({
+        message: "Assinatura vencida. Renove o acesso mensal para continuar usando.",
+        subscription,
+      });
+    }
+
+    req.account = accountContext.account;
+    req.tenantId = accountContext.account.tenantId;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/birdlots", async (req, res) => {
   const lots = await prisma.birdLot.findMany({
+    where: { tenantId: req.tenantId },
     orderBy: { id: "desc" },
   });
 
@@ -1579,6 +1617,7 @@ app.post("/birdlots", async (req, res) => {
   const newLot = await prisma.birdLot.create({
     data: {
       ...lotData,
+      tenantId: req.tenantId,
       movimentacoes: normalizeLotMovements(
         req.body.movimentacoes,
         createInitialLotMovement(lotData)
@@ -1591,7 +1630,7 @@ app.post("/birdlots", async (req, res) => {
 
 app.put("/birdlots/close-all", async (req, res) => {
   await prisma.birdLot.updateMany({
-    where: { status: "Ativo" },
+    where: { tenantId: req.tenantId, status: "Ativo" },
     data: { status: "Finalizado" },
   });
 
@@ -1603,7 +1642,7 @@ app.put("/birdlots/:id", async (req, res) => {
     where: { id: Number(req.params.id) },
   });
 
-  if (!currentLot) {
+  if (!currentLot || currentLot.tenantId !== req.tenantId) {
     return res.status(404).json({ message: "Registro nao encontrado" });
   }
 
@@ -1626,6 +1665,7 @@ app.put("/birdlots/:id", async (req, res) => {
     where: { id: Number(req.params.id) },
     data: {
       ...lotData,
+      tenantId: req.tenantId,
       movimentacoes: movements,
     },
   });
@@ -1634,7 +1674,9 @@ app.put("/birdlots/:id", async (req, res) => {
 });
 
 app.delete("/birdlots", async (req, res) => {
-  await prisma.birdLot.deleteMany();
+  await prisma.birdLot.deleteMany({
+    where: { tenantId: req.tenantId },
+  });
 
   res.json({
     success: true,
@@ -1643,8 +1685,11 @@ app.delete("/birdlots", async (req, res) => {
 });
 
 app.delete("/birdlots/:id", async (req, res) => {
-  await prisma.birdLot.delete({
-    where: { id: Number(req.params.id) },
+  await prisma.birdLot.deleteMany({
+    where: {
+      id: Number(req.params.id),
+      tenantId: req.tenantId,
+    },
   });
 
   res.json({
@@ -1661,6 +1706,7 @@ app.get("/birdlots/monthly-report/pdf", async (req, res) => {
   const month = req.query.month || getCurrentMonth();
   const ranchFilter = String(req.query.rancho || req.query.lote || "").trim().toLowerCase();
   const lots = await prisma.birdLot.findMany({
+    where: { tenantId: req.tenantId },
     orderBy: [{ idadeAtual: "asc" }, { dataAlojamento: "asc" }],
   });
   const monthlyLots = getLotsByMonth(lots, month).filter((lot) => {
@@ -1737,8 +1783,11 @@ app.get("/birdlots/monthly-report/pdf", async (req, res) => {
 });
 
 app.get("/birdlots/:id/pdf", async (req, res) => {
-  const lot = await prisma.birdLot.findUnique({
-    where: { id: Number(req.params.id) },
+  const lot = await prisma.birdLot.findFirst({
+    where: {
+      id: Number(req.params.id),
+      tenantId: req.tenantId,
+    },
   });
 
   if (!lot) {

@@ -6,26 +6,26 @@ import {
 } from "react";
 
 import { createStockLowAlertApi } from "../services/vacitechApi";
+import {
+  TENANT_CHANGED_EVENT,
+  getCurrentTenantId,
+  readJson,
+  writeJson,
+} from "../utils/vacitechStorage";
 
 const VaccineContext =
   createContext();
 
 function getStoredItems(key) {
-  try {
-    const storage =
-      localStorage.getItem(key);
+  const value = readJson(key, []);
 
-    return storage
-      ? JSON.parse(storage)
-      : [];
-  } catch (error) {
-    console.log(error);
-    return [];
-  }
+  return Array.isArray(value)
+    ? value
+    : [];
 }
 
 function getStoredObject(key) {
-  const value = getStoredItems(key);
+  const value = readJson(key, {});
 
   return value && !Array.isArray(value)
     ? value
@@ -55,12 +55,13 @@ function getAlertHistory() {
 }
 
 function writeAlertHistory(history) {
-  localStorage.setItem("stockAlertHistory", JSON.stringify(history));
+  writeJson("stockAlertHistory", history, { silent: true });
 }
 
 export function VaccineProvider({
   children,
 }) {
+  const [tenantId, setTenantId] = useState(getCurrentTenantId);
 
   const [vaccines, setVaccines] =
     useState(() => getStoredItems("vaccines"));
@@ -75,38 +76,71 @@ export function VaccineProvider({
     useState(() => getStoredObject("stockAlertLevels"));
 
   useEffect(() => {
+    function loadTenantData() {
+      setTenantId(getCurrentTenantId());
+      setVaccines(getStoredItems("vaccines"));
+      setEntries(getStoredItems("entries"));
+      setOutputs(getStoredItems("outputs"));
+      setStockAlertLevels(getStoredObject("stockAlertLevels"));
+    }
 
-    localStorage.setItem(
+    function loadTenantDataFromStorage(event) {
+      if (
+        !event.key ||
+        event.key === "currentTenantId" ||
+        event.key === "token" ||
+        event.key === "user"
+      ) {
+        loadTenantData();
+      }
+    }
+
+    window.addEventListener(TENANT_CHANGED_EVENT, loadTenantData);
+    window.addEventListener("storage", loadTenantDataFromStorage);
+
+    return () => {
+      window.removeEventListener(TENANT_CHANGED_EVENT, loadTenantData);
+      window.removeEventListener("storage", loadTenantDataFromStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+
+    writeJson(
       "vaccines",
-      JSON.stringify(vaccines)
+      vaccines,
+      { silent: true }
     );
 
-  }, [vaccines]);
+  }, [vaccines, tenantId]);
 
   useEffect(() => {
 
-    localStorage.setItem(
+    writeJson(
       "entries",
-      JSON.stringify(entries)
+      entries,
+      { silent: true }
     );
 
-  }, [entries]);
+  }, [entries, tenantId]);
 
   useEffect(() => {
 
-    localStorage.setItem(
+    writeJson(
       "outputs",
-      JSON.stringify(outputs)
+      outputs,
+      { silent: true }
     );
 
-  }, [outputs]);
+  }, [outputs, tenantId]);
 
   useEffect(() => {
-    localStorage.setItem(
+    writeJson(
       "stockAlertLevels",
-      JSON.stringify(stockAlertLevels)
+      stockAlertLevels,
+      { silent: true }
     );
-  }, [stockAlertLevels]);
+  }, [stockAlertLevels, tenantId]);
 
   function getVaccineName(id, fallback = "Vacina") {
     const vaccine = vaccines.find((item) => String(item.id) === String(id));

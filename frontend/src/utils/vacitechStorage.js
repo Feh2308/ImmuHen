@@ -1,6 +1,151 @@
+export const TENANT_CHANGED_EVENT = "immuhen-tenant-changed";
+
+const CURRENT_TENANT_KEY = "currentTenantId";
+const TENANT_STORAGE_PREFIX = "immuhen:tenant:";
+const TENANT_SCOPED_KEYS = new Set([
+  "farmProfile",
+  "vaccinators",
+  "schedules",
+  "requests",
+  "completedVaccinations",
+  "vaccinatorNotifications",
+  "vaccinatorPortalSession",
+  "vaccines",
+  "entries",
+  "outputs",
+  "stockAlertLevels",
+  "stockAlertHistory",
+]);
+
+function canUseStorage() {
+  return typeof window !== "undefined" && Boolean(window.localStorage);
+}
+
+function decodeAuthToken(token) {
+  if (!token || !token.includes(".")) {
+    return {};
+  }
+
+  try {
+    const [payload] = token.split(".");
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+
+    return JSON.parse(window.atob(padded));
+  } catch (error) {
+    console.log(error);
+    return {};
+  }
+}
+
+function getTenantIdFromSession() {
+  if (!canUseStorage()) {
+    return "";
+  }
+
+  try {
+    const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const tokenPayload = decodeAuthToken(localStorage.getItem("token") || "");
+
+    return (
+      storedUser.tenantId ||
+      tokenPayload.tenantId ||
+      storedUser.email ||
+      tokenPayload.email ||
+      storedUser.id ||
+      tokenPayload.accountId ||
+      ""
+    );
+  } catch (error) {
+    console.log(error);
+    return "";
+  }
+}
+
+function emitTenantChanged(tenantId = getCurrentTenantId()) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new CustomEvent(TENANT_CHANGED_EVENT, { detail: { tenantId } }));
+  window.dispatchEvent(new Event("vacitech-storage"));
+}
+
+export function getCurrentTenantId() {
+  if (!canUseStorage()) {
+    return "";
+  }
+
+  return localStorage.getItem(CURRENT_TENANT_KEY) || getTenantIdFromSession();
+}
+
+export function setCurrentTenantContext(authData = {}, options = {}) {
+  if (!canUseStorage()) {
+    return "";
+  }
+
+  const tokenPayload = decodeAuthToken(authData.token || localStorage.getItem("token") || "");
+  const user = authData.user || {};
+  const tenantId = (
+    user.tenantId ||
+    tokenPayload.tenantId ||
+    user.email ||
+    tokenPayload.email ||
+    user.id ||
+    tokenPayload.accountId ||
+    ""
+  );
+
+  if (tenantId) {
+    localStorage.setItem(CURRENT_TENANT_KEY, tenantId);
+  } else {
+    localStorage.removeItem(CURRENT_TENANT_KEY);
+  }
+
+  if (!options.silent) {
+    emitTenantChanged(tenantId);
+  }
+
+  return tenantId;
+}
+
+export function saveAccountSession({ token, user }, options = {}) {
+  if (!canUseStorage()) {
+    return "";
+  }
+
+  localStorage.setItem("token", token || "");
+  localStorage.setItem("user", JSON.stringify(user || {}));
+
+  return setCurrentTenantContext({ token, user }, options);
+}
+
+export function clearAccountSession() {
+  if (!canUseStorage()) {
+    return;
+  }
+
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  localStorage.removeItem(CURRENT_TENANT_KEY);
+  emitTenantChanged("");
+}
+
+export function notifyTenantStorageReady() {
+  emitTenantChanged();
+}
+
+export function getStorageKey(key) {
+  if (!TENANT_SCOPED_KEYS.has(key)) {
+    return key;
+  }
+
+  return `${TENANT_STORAGE_PREFIX}${getCurrentTenantId() || "guest"}:${key}`;
+}
+
 export function readJson(key, fallback) {
   try {
-    const storedValue = localStorage.getItem(key);
+    const storedValue = localStorage.getItem(getStorageKey(key));
 
     return storedValue
       ? JSON.parse(storedValue)
@@ -11,9 +156,20 @@ export function readJson(key, fallback) {
   }
 }
 
-export function writeJson(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
-  window.dispatchEvent(new Event("vacitech-storage"));
+export function writeJson(key, value, options = {}) {
+  localStorage.setItem(getStorageKey(key), JSON.stringify(value));
+
+  if (!options.silent) {
+    window.dispatchEvent(new Event("vacitech-storage"));
+  }
+}
+
+export function removeJson(key, options = {}) {
+  localStorage.removeItem(getStorageKey(key));
+
+  if (!options.silent) {
+    window.dispatchEvent(new Event("vacitech-storage"));
+  }
 }
 
 export function getFarmProfile() {

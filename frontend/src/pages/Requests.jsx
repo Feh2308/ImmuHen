@@ -5,6 +5,7 @@ import {
   getStatusClass,
   normalizeRequestStatus,
   readJson,
+  writeJson,
 } from "../utils/vacitechStorage";
 import {
   confirmVaccinationCompletionApi,
@@ -208,9 +209,9 @@ function Requests() {
       setRequests(apiRequests);
       setNotifications(state.notifications || []);
       setCompletedVaccinations(state.completedVaccinations || []);
-      localStorage.setItem("requests", JSON.stringify(apiRequests));
-      localStorage.setItem("vaccinatorNotifications", JSON.stringify(state.notifications || []));
-      localStorage.setItem("completedVaccinations", JSON.stringify(state.completedVaccinations || []));
+      writeJson("requests", apiRequests, { silent: true });
+      writeJson("vaccinatorNotifications", state.notifications || [], { silent: true });
+      writeJson("completedVaccinations", state.completedVaccinations || [], { silent: true });
     } catch (error) {
       console.log(error);
       setRequests(readJson("requests", []));
@@ -517,8 +518,8 @@ function Requests() {
 
       setRequests(data.requests || requests);
       setNotifications(data.notifications || notifications);
-      localStorage.setItem("requests", JSON.stringify(data.requests || requests));
-      localStorage.setItem("vaccinatorNotifications", JSON.stringify(data.notifications || notifications));
+      writeJson("requests", data.requests || requests, { silent: true });
+      writeJson("vaccinatorNotifications", data.notifications || notifications, { silent: true });
       setDoseConfirmationForms((currentForms) => {
         const nextForms = { ...currentForms };
         delete nextForms[request.id];

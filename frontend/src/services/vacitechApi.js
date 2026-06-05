@@ -203,3 +203,38 @@ export async function createStockLowAlertApi(payload) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function fetchBirdLotsApi() {
+  return apiRequest("/birdlots");
+}
+
+export async function saveBirdLotApi(lot, id = null) {
+  const data = await apiRequest(id ? `/birdlots/${id}` : "/birdlots", {
+    method: id ? "PUT" : "POST",
+    body: JSON.stringify(lot),
+  });
+
+  return data.lot;
+}
+
+export async function deleteBirdLotApi(id) {
+  return apiRequest(`/birdlots/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchBirdLotsMonthlyReportPdfApi(month, ranch = "") {
+  const searchParams = new URLSearchParams();
+
+  if (month) {
+    searchParams.set("month", month);
+  }
+
+  if (ranch) {
+    searchParams.set("rancho", ranch);
+  }
+
+  const query = searchParams.toString();
+
+  return apiBlobRequest(`/birdlots/monthly-report/pdf${query ? `?${query}` : ""}`);
+}
