@@ -791,13 +791,27 @@ function Schedule() {
     ), 0);
   }
 
-  function getScheduleTotalCost(schedule) {
-    return getScheduleVaccineCost(schedule) + getLaborCost(schedule);
+function getScheduleTotalCost(schedule) {
+  return getScheduleVaccineCost(schedule) + getLaborCost(schedule);
+}
+
+function getProgramLaborCostFromRows(rows) {
+  return rows.reduce((total, row) => Math.max(total, getLaborCost(row)), 0);
+}
+
+function getMapsLink(location) {
+  const value = String(location || "").trim();
+
+  if (!value) {
+    return "";
   }
 
-  function getProgramLaborCostFromRows(rows) {
-    return rows.reduce((total, row) => Math.max(total, getLaborCost(row)), 0);
+  if (/^https?:\/\//i.test(value)) {
+    return value;
   }
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+}
 
   function getUsageStockError(usages, multiplier = 1) {
     const dosesByVaccine = usages.reduce((items, usage) => {
@@ -2758,9 +2772,18 @@ function Schedule() {
                     <p className="text-sm font-bold uppercase tracking-wide text-green-700">
                       Localizacao
                     </p>
-                    <p className="mt-2 break-words text-zinc-700">
-                      {schedule.farmLocation || "Nao informada"}
-                    </p>
+                    {schedule.farmLocation ? (
+                      <a
+                        href={getMapsLink(schedule.farmLocation)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 block break-words font-bold text-green-700 underline decoration-green-300 underline-offset-4"
+                      >
+                        Abrir no Google Maps
+                      </a>
+                    ) : (
+                      <p className="mt-2 break-words text-zinc-700">Nao informada</p>
+                    )}
                   </div>
 
                   <div className="rounded-xl border border-green-100 bg-white p-4">

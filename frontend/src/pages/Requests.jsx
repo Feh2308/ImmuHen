@@ -47,6 +47,20 @@ function getRequestTotalDoses(request) {
   return (request.vaccineUsages || []).reduce((total, usage) => total + Number(usage.doses || 0), 0);
 }
 
+function getMapsLink(location) {
+  const value = String(location || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+}
+
 function getRecordDateValue(record) {
   return (
     record?.vaccinationStartDate ||
@@ -870,9 +884,18 @@ function Requests() {
                       <p className="text-sm font-bold uppercase tracking-wide text-green-700">
                         Localizacao
                       </p>
-                      <p className="mt-2 break-words text-zinc-700">
-                        {request.farmLocation || "Nao informada"}
-                      </p>
+                      {request.farmLocation ? (
+                        <a
+                          href={getMapsLink(request.farmLocation)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 block break-words font-bold text-green-700 underline decoration-green-300 underline-offset-4"
+                        >
+                          Abrir no Google Maps
+                        </a>
+                      ) : (
+                        <p className="mt-2 break-words text-zinc-700">Nao informada</p>
+                      )}
                     </div>
 
                     <div className="rounded-xl border border-green-100 bg-white p-4">

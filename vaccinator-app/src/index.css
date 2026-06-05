@@ -26,6 +26,20 @@ button:disabled {
   opacity: 0.7;
 }
 
+a {
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.farm-card a,
+.request-extra a {
+  color: #15803d;
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-color: #86efac;
+  text-underline-offset: 4px;
+}
+
 .auth-page {
   align-items: center;
   background: linear-gradient(135deg, #16a34a, #22c55e);

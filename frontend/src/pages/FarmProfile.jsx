@@ -37,6 +37,20 @@ function fileToDataUrl(file) {
   });
 }
 
+function getMapsLink(location) {
+  const value = String(location || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+}
+
 function FarmProfile() {
   const savedProfile = getFarmProfile();
   const [form, setForm] = useState({
@@ -513,7 +527,18 @@ function FarmProfile() {
 
               <div className="rounded-xl border border-green-100 p-4">
                 <p className="font-bold text-zinc-900">Localizacao</p>
-                <p className="mt-1 overflow-hidden break-words text-zinc-600">{form.location || "Nao informada"}</p>
+                {form.location ? (
+                  <a
+                    href={getMapsLink(form.location)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 block overflow-hidden break-words font-bold text-green-700 underline decoration-green-300 underline-offset-4"
+                  >
+                    Abrir no Google Maps
+                  </a>
+                ) : (
+                  <p className="mt-1 overflow-hidden break-words text-zinc-600">Nao informada</p>
+                )}
               </div>
 
               <div className="rounded-xl border border-green-100 p-4">

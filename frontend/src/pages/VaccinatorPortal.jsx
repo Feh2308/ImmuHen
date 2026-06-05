@@ -16,6 +16,20 @@ function getPortalSession() {
   return readJson("vaccinatorPortalSession", null);
 }
 
+function getMapsLink(location) {
+  const value = String(location || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+}
+
 function VaccinatorPortal() {
   const [session, setSession] = useState(getPortalSession);
   const [email, setEmail] = useState("");
@@ -353,7 +367,19 @@ function VaccinatorPortal() {
                     </p>
 
                     <p className="break-words text-zinc-600">
-                      Localizacao: {farm.location || "Nao informada"}
+                      Localizacao:{" "}
+                      {farm.location ? (
+                        <a
+                          href={getMapsLink(farm.location)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-bold text-green-700 underline decoration-green-300 underline-offset-4"
+                        >
+                          Abrir no Google Maps
+                        </a>
+                      ) : (
+                        "Nao informada"
+                      )}
                     </p>
                   </article>
                 ))}
@@ -489,9 +515,18 @@ function VaccinatorPortal() {
                           <p className="text-xs font-bold uppercase tracking-wide text-green-700">
                             Localizacao
                           </p>
-                          <p className="mt-2 break-words text-sm text-zinc-700">
-                            {request.farmLocation || "Nao informada"}
-                          </p>
+                          {request.farmLocation ? (
+                            <a
+                              href={getMapsLink(request.farmLocation)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-2 block break-words text-sm font-bold text-green-700 underline decoration-green-300 underline-offset-4"
+                            >
+                              Abrir no Google Maps
+                            </a>
+                          ) : (
+                            <p className="mt-2 break-words text-sm text-zinc-700">Nao informada</p>
+                          )}
                         </div>
 
                         <div className="rounded-lg border border-green-100 bg-white p-3">

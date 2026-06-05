@@ -109,6 +109,20 @@ function getRequestTotalDoses(request) {
   return (request.vaccineUsages || []).reduce((total, usage) => total + Number(usage.doses || 0), 0);
 }
 
+function getMapsLink(location) {
+  const value = String(location || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+}
+
 function getRecordDateValue(record) {
   return (
     record?.vaccinationStartDate ||
@@ -881,7 +895,16 @@ function App() {
                 <p>CNPJ/CPF: {farm.document || "-"}</p>
                 <p>Proprietario: {farm.owner || "-"}</p>
                 <p>Endereco: {farm.address || "-"}</p>
-                <p>Localizacao: {farm.location || "-"}</p>
+                <p>
+                  Localizacao:{" "}
+                  {farm.location ? (
+                    <a href={getMapsLink(farm.location)} target="_blank" rel="noreferrer">
+                      Abrir no Google Maps
+                    </a>
+                  ) : (
+                    "-"
+                  )}
+                </p>
               </article>
             ))}
           </section>
@@ -1069,7 +1092,15 @@ function App() {
                     </div>
                     <div>
                       <span>Localizacao</span>
-                      <p>{request.farmLocation || "-"}</p>
+                      {request.farmLocation ? (
+                        <p>
+                          <a href={getMapsLink(request.farmLocation)} target="_blank" rel="noreferrer">
+                            Abrir no Google Maps
+                          </a>
+                        </p>
+                      ) : (
+                        <p>-</p>
+                      )}
                     </div>
                     <div>
                       <span>Observacoes</span>
