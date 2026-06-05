@@ -10,9 +10,26 @@ import {
   getFarmProfile,
   hasCompleteFarmProfile,
   notifyTenantStorageReady,
+  readJson,
   saveAccountSession,
   writeJson,
 } from "../utils/vacitechStorage";
+
+function pickServerArray(serverValue, key) {
+  if (Array.isArray(serverValue) && serverValue.length > 0) {
+    return serverValue;
+  }
+
+  return readJson(key, []);
+}
+
+function pickServerObject(serverValue, key) {
+  if (serverValue && typeof serverValue === "object" && !Array.isArray(serverValue) && Object.keys(serverValue).length > 0) {
+    return serverValue;
+  }
+
+  return readJson(key, {});
+}
 
 function Login() {
   const navigate = useNavigate();
@@ -32,8 +49,16 @@ function Login() {
     try {
       const data = await loginApi({ email, password });
 
+      sessionStorage.removeItem("stockAuthorized");
+      sessionStorage.removeItem("chiefAuthorized");
       saveAccountSession({ token: data.token, user: data.user }, { silent: true });
       writeJson("farmProfile", data.farmProfile || data.state?.farmProfile || {}, { silent: true });
+      writeJson("vaccines", pickServerArray(data.state?.vaccines, "vaccines"), { silent: true });
+      writeJson("entries", pickServerArray(data.state?.entries, "entries"), { silent: true });
+      writeJson("outputs", pickServerArray(data.state?.outputs, "outputs"), { silent: true });
+      writeJson("stockAlertLevels", pickServerObject(data.state?.stockAlertLevels, "stockAlertLevels"), { silent: true });
+      writeJson("vaccineEditRequests", pickServerArray(data.state?.vaccineEditRequests, "vaccineEditRequests"), { silent: true });
+      writeJson("vaccineAuditLog", pickServerArray(data.state?.vaccineAuditLog, "vaccineAuditLog"), { silent: true });
       writeJson("vaccinators", data.state?.vaccinators || [], { silent: true });
       writeJson("schedules", data.state?.schedules || [], { silent: true });
       writeJson("requests", data.state?.requests || [], { silent: true });

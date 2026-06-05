@@ -77,6 +77,10 @@ function Sidebar() {
           Estoque
         </Link>
 
+        <Link to="/chefe" className={linkClass("/chefe")}>
+          Chefe
+        </Link>
+
         <Link to="/agenda" className={linkClass("/agenda")}>
           Programa
         </Link>

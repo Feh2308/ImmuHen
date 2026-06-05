@@ -647,6 +647,72 @@ app.post("/api/vacitech/stock-access", async (req, res) => {
   });
 });
 
+app.post("/api/vacitech/chief-access", async (req, res) => {
+  const password = String(req.body.password || "");
+
+  if (!isAdminAccount(req.account)) {
+    return res.status(403).json({
+      message: "Apenas chefe/admin pode acessar este ambiente.",
+    });
+  }
+
+  if (!password) {
+    return res.status(400).json({
+      message: "Informe a senha do chefe/admin.",
+    });
+  }
+
+  if (!verifyPassword(password, req.account.passwordHash)) {
+    return res.status(401).json({
+      message: "Senha do chefe/admin incorreta.",
+    });
+  }
+
+  res.json({
+    success: true,
+    role: req.account.role || "admin",
+  });
+});
+
+app.put("/api/vacitech/inventory-state", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+
+  tenantData.vaccines = Array.isArray(req.body.vaccines)
+    ? req.body.vaccines
+    : tenantData.vaccines;
+  tenantData.entries = Array.isArray(req.body.entries)
+    ? req.body.entries
+    : tenantData.entries;
+  tenantData.outputs = Array.isArray(req.body.outputs)
+    ? req.body.outputs
+    : tenantData.outputs;
+  tenantData.vaccineEditRequests = Array.isArray(req.body.vaccineEditRequests)
+    ? req.body.vaccineEditRequests
+    : tenantData.vaccineEditRequests;
+  tenantData.vaccineAuditLog = Array.isArray(req.body.vaccineAuditLog)
+    ? req.body.vaccineAuditLog
+    : tenantData.vaccineAuditLog;
+  tenantData.stockAlertLevels = req.body.stockAlertLevels && typeof req.body.stockAlertLevels === "object" && !Array.isArray(req.body.stockAlertLevels)
+    ? req.body.stockAlertLevels
+    : tenantData.stockAlertLevels;
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    success: true,
+    inventoryState: {
+      vaccines: tenantData.vaccines,
+      entries: tenantData.entries,
+      outputs: tenantData.outputs,
+      stockAlertLevels: tenantData.stockAlertLevels,
+      vaccineEditRequests: tenantData.vaccineEditRequests,
+      vaccineAuditLog: tenantData.vaccineAuditLog,
+    },
+  });
+});
+
 app.post("/api/vacitech/notifications/test", async (req, res) => {
   const data = await readVacitechData();
   const tenantData = getTenantData(data, req.tenantId);
@@ -2105,6 +2171,12 @@ function gerarCalendario(dataAlojamento) {
 function getEmptyTenantData() {
   return {
     farmProfile: {},
+    vaccines: [],
+    entries: [],
+    outputs: [],
+    stockAlertLevels: {},
+    vaccineEditRequests: [],
+    vaccineAuditLog: [],
     vaccinators: [],
     schedules: [],
     requests: [],
@@ -2251,6 +2323,14 @@ function migrateVacitechData(data = {}) {
       [tenantId]: {
         ...getEmptyTenantData(),
         farmProfile: data.farmProfile || {},
+        vaccines: Array.isArray(data.vaccines) ? data.vaccines : [],
+        entries: Array.isArray(data.entries) ? data.entries : [],
+        outputs: Array.isArray(data.outputs) ? data.outputs : [],
+        stockAlertLevels: data.stockAlertLevels && typeof data.stockAlertLevels === "object" && !Array.isArray(data.stockAlertLevels)
+          ? data.stockAlertLevels
+          : {},
+        vaccineEditRequests: Array.isArray(data.vaccineEditRequests) ? data.vaccineEditRequests : [],
+        vaccineAuditLog: Array.isArray(data.vaccineAuditLog) ? data.vaccineAuditLog : [],
         vaccinators: Array.isArray(data.vaccinators) ? data.vaccinators : [],
         schedules: Array.isArray(data.schedules) ? data.schedules : [],
         requests: Array.isArray(data.requests) ? data.requests : [],
@@ -2277,6 +2357,24 @@ function getTenantData(data, tenantId) {
     ...getEmptyTenantData(),
     ...(data.tenants?.[tenantId] || {}),
     farmProfile: data.tenants?.[tenantId]?.farmProfile || {},
+    vaccines: Array.isArray(data.tenants?.[tenantId]?.vaccines)
+      ? data.tenants[tenantId].vaccines
+      : [],
+    entries: Array.isArray(data.tenants?.[tenantId]?.entries)
+      ? data.tenants[tenantId].entries
+      : [],
+    outputs: Array.isArray(data.tenants?.[tenantId]?.outputs)
+      ? data.tenants[tenantId].outputs
+      : [],
+    stockAlertLevels: data.tenants?.[tenantId]?.stockAlertLevels && typeof data.tenants[tenantId].stockAlertLevels === "object" && !Array.isArray(data.tenants[tenantId].stockAlertLevels)
+      ? data.tenants[tenantId].stockAlertLevels
+      : {},
+    vaccineEditRequests: Array.isArray(data.tenants?.[tenantId]?.vaccineEditRequests)
+      ? data.tenants[tenantId].vaccineEditRequests
+      : [],
+    vaccineAuditLog: Array.isArray(data.tenants?.[tenantId]?.vaccineAuditLog)
+      ? data.tenants[tenantId].vaccineAuditLog
+      : [],
     vaccinators: Array.isArray(data.tenants?.[tenantId]?.vaccinators)
       ? data.tenants[tenantId].vaccinators
       : [],

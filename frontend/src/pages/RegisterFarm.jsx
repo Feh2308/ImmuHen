@@ -105,8 +105,16 @@ function RegisterFarm() {
         importantContacts: normalizeImportantContacts(form.importantContacts),
       });
 
+      sessionStorage.removeItem("stockAuthorized");
+      sessionStorage.removeItem("chiefAuthorized");
       saveAccountSession({ token: data.token, user: data.user }, { silent: true });
       writeJson("farmProfile", data.farmProfile || data.state?.farmProfile || {}, { silent: true });
+      writeJson("vaccines", data.state?.vaccines || [], { silent: true });
+      writeJson("entries", data.state?.entries || [], { silent: true });
+      writeJson("outputs", data.state?.outputs || [], { silent: true });
+      writeJson("stockAlertLevels", data.state?.stockAlertLevels || {}, { silent: true });
+      writeJson("vaccineEditRequests", data.state?.vaccineEditRequests || [], { silent: true });
+      writeJson("vaccineAuditLog", data.state?.vaccineAuditLog || [], { silent: true });
       writeJson("vaccinators", data.state?.vaccinators || [], { silent: true });
       writeJson("schedules", data.state?.schedules || [], { silent: true });
       writeJson("requests", data.state?.requests || [], { silent: true });

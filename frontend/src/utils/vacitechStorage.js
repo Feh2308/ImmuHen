@@ -15,6 +15,8 @@ const TENANT_SCOPED_KEYS = new Set([
   "outputs",
   "stockAlertLevels",
   "stockAlertHistory",
+  "vaccineEditRequests",
+  "vaccineAuditLog",
 ]);
 
 function canUseStorage() {

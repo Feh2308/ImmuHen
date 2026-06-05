@@ -87,6 +87,13 @@ export async function fetchSharedStateApi() {
   return apiRequest("/api/vacitech/state");
 }
 
+export async function saveInventoryStateApi(inventoryState) {
+  return apiRequest("/api/vacitech/inventory-state", {
+    method: "PUT",
+    body: JSON.stringify(inventoryState),
+  });
+}
+
 export async function saveFarmProfileApi(profile) {
   const data = await apiRequest("/api/vacitech/farm-profile", {
     method: "PUT",
@@ -217,6 +224,13 @@ export async function sendNotificationTestApi() {
 
 export async function authorizeStockAccessApi(password) {
   return apiRequest("/api/vacitech/stock-access", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function authorizeChiefAccessApi(password) {
+  return apiRequest("/api/vacitech/chief-access", {
     method: "POST",
     body: JSON.stringify({ password }),
   });

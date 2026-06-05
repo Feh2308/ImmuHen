@@ -14,6 +14,7 @@ import FarmSetup from "../pages/FarmSetup";
 import VaccinatorPortal from "../pages/VaccinatorPortal";
 import RegisterFarm from "../pages/RegisterFarm";
 import TemperatureCapture from "../pages/TemperatureCapture";
+import Chief from "../pages/Chief";
 
 export default function AppRoutes() {
 
@@ -46,6 +47,8 @@ export default function AppRoutes() {
         <Route path="/solicitacoes" element={<Request />} />
 
         <Route path="/perfil" element={<FarmProfile />} />
+
+        <Route path="/chefe" element={<Chief />} />
 
         <Route path="/Aves" element={<Aves />} />
 

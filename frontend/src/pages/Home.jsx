@@ -139,6 +139,7 @@ function Welcome() {
   function closeSystem() {
     clearAccountSession();
     sessionStorage.removeItem("stockAuthorized");
+    sessionStorage.removeItem("chiefAuthorized");
     navigate("/", { replace: true });
   }
 
