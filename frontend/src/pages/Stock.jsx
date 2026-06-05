@@ -5,8 +5,7 @@ import Sidebar from "../components/Sidebar";
 import {
   useVaccines,
 } from "../context/VaccineContext";
-
-const STOCK_PASSWORD = "123456";
+import { authorizeStockAccessApi } from "../services/vacitechApi";
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString("pt-BR", {
@@ -65,6 +64,12 @@ function Stock() {
   } = useVaccines();
 
   const [password, setPassword] =
+    useState("");
+
+  const [accessLoading, setAccessLoading] =
+    useState(false);
+
+  const [accessMessage, setAccessMessage] =
     useState("");
 
   const [authorized, setAuthorized] =
@@ -222,15 +227,20 @@ function Stock() {
     );
   }, [stockRows]);
 
-  function handleStockAccess() {
-    if (password === STOCK_PASSWORD) {
+  async function handleStockAccess() {
+    setAccessLoading(true);
+    setAccessMessage("");
+
+    try {
+      await authorizeStockAccessApi(password);
       sessionStorage.setItem("stockAuthorized", "true");
       setAuthorized(true);
       setPassword("");
-      return;
+    } catch (error) {
+      setAccessMessage(error.message || "Senha administrativa incorreta");
+    } finally {
+      setAccessLoading(false);
     }
-
-    alert("Senha administrativa incorreta");
   }
 
   function lockStock() {
@@ -321,10 +331,17 @@ function Stock() {
 
             <button
               onClick={handleStockAccess}
+              disabled={accessLoading}
               className="mt-5 bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-2xl font-bold transition"
             >
-              Acessar Estoque
+              {accessLoading ? "Verificando..." : "Acessar Estoque"}
             </button>
+
+            {accessMessage && (
+              <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700">
+                {accessMessage}
+              </p>
+            )}
 
           </div>
 

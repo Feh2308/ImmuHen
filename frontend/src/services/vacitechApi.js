@@ -215,6 +215,13 @@ export async function sendNotificationTestApi() {
   });
 }
 
+export async function authorizeStockAccessApi(password) {
+  return apiRequest("/api/vacitech/stock-access", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
 export async function fetchBirdLotsApi() {
   return apiRequest("/birdlots");
 }

@@ -24,6 +24,7 @@ const corsOrigin = process.env.CORS_ORIGIN || "*";
 const stateStorage = String(process.env.VACITECH_STATE_STORAGE || (process.env.DATABASE_URL ? "database" : "file")).toLowerCase();
 const subscriptionAdminKey = process.env.SUBSCRIPTION_ADMIN_KEY || "";
 const ownerAdminKey = process.env.OWNER_ADMIN_KEY || subscriptionAdminKey || "";
+const stockAccessKey = process.env.STOCK_ACCESS_KEY || "";
 const mercadoPagoAccessToken = process.env.MP_ACCESS_TOKEN || "";
 const apiPublicUrl = String(process.env.API_PUBLIC_URL || "").replace(/\/$/, "");
 const frontendPublicUrl = String(process.env.FRONTEND_PUBLIC_URL || "").replace(/\/$/, "");
@@ -613,6 +614,36 @@ app.get("/api/vacitech/notifications/status", async (req, res) => {
     },
     contact: getFarmNotificationContact(data, req.tenantId, tenantData),
     recentOutbox: (tenantData.notificationOutbox || []).slice(0, 12),
+  });
+});
+
+app.post("/api/vacitech/stock-access", async (req, res) => {
+  const password = String(req.body.password || "");
+
+  if (!isAdminAccount(req.account)) {
+    return res.status(403).json({
+      message: "Apenas chefe/admin pode acessar o estoque.",
+    });
+  }
+
+  if (!password) {
+    return res.status(400).json({
+      message: "Informe a senha administrativa.",
+    });
+  }
+
+  const validAccountPassword = verifyPassword(password, req.account.passwordHash);
+  const validStockKey = stockAccessKey && password === stockAccessKey;
+
+  if (!validAccountPassword && !validStockKey) {
+    return res.status(401).json({
+      message: "Senha administrativa incorreta.",
+    });
+  }
+
+  res.json({
+    success: true,
+    role: req.account.role || "admin",
   });
 });
 
@@ -2283,6 +2314,12 @@ function verifyPassword(password, passwordHash) {
     hashPassword(password) === passwordHash ||
     hashPasswordWithSecret(password, authSecret) === passwordHash ||
     hashPasswordWithSecret(password, "granja-system-dev-secret") === passwordHash
+  );
+}
+
+function isAdminAccount(account) {
+  return ["admin", "owner", "chefe"].includes(
+    String(account?.role || "").trim().toLowerCase()
   );
 }
 

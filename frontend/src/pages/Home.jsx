@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   PAYMENTS_ENABLED,
+  authorizeStockAccessApi,
   createSubscriptionCheckoutApi,
   createSubscriptionPixApi,
   fetchBirdLotsApi,
@@ -17,14 +18,14 @@ import {
   writeJson,
 } from "../utils/vacitechStorage";
 
-const STOCK_PASSWORD = "123456";
-
 function Welcome() {
 
   const navigate = useNavigate();
 
   const [password, setPassword] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [stockAccessLoading, setStockAccessLoading] = useState(false);
+  const [stockAccessMessage, setStockAccessMessage] = useState("");
   const [farmProfile, setFarmProfile] = useState(getFarmProfile);
   const [subscription, setSubscription] = useState(null);
   const [subscriptionMessage, setSubscriptionMessage] = useState("");
@@ -141,15 +142,19 @@ function Welcome() {
     navigate("/", { replace: true });
   }
 
-  function handleStockAccess() {
+  async function handleStockAccess() {
+    setStockAccessLoading(true);
+    setStockAccessMessage("");
 
-    if (password === STOCK_PASSWORD) {
+    try {
+      await authorizeStockAccessApi(password);
       sessionStorage.setItem("stockAuthorized", "true");
       navigate("/estoque");
-      return;
+    } catch (error) {
+      setStockAccessMessage(error.message || "Senha administrativa incorreta");
+    } finally {
+      setStockAccessLoading(false);
     }
-
-    alert("Senha administrativa incorreta");
   }
 
   async function openSubscriptionCheckout() {
@@ -321,10 +326,17 @@ function Welcome() {
 
             <button
               onClick={handleStockAccess}
+              disabled={stockAccessLoading}
               className="mt-5 bg-green-600 hover:bg-green-700 transition text-white px-6 py-4 rounded-2xl font-bold"
             >
-              Confirmar Acesso
+              {stockAccessLoading ? "Verificando..." : "Confirmar Acesso"}
             </button>
+
+            {stockAccessMessage && (
+              <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700">
+                {stockAccessMessage}
+              </p>
+            )}
 
           </div>
 
