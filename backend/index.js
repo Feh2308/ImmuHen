@@ -2836,6 +2836,7 @@ function getSmtpTransport() {
       connectionTimeout: 15000,
       greetingTimeout: 15000,
       socketTimeout: 20000,
+      family: 4,
       auth: {
         user: smtpUser,
         pass: smtpPass,
