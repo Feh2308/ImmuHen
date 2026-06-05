@@ -2833,6 +2833,9 @@ function getSmtpTransport() {
       host: smtpHost,
       port: smtpPort,
       secure: smtpSecure,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
       auth: {
         user: smtpUser,
         pass: smtpPass,
