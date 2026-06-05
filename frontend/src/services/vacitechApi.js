@@ -204,6 +204,17 @@ export async function createStockLowAlertApi(payload) {
   });
 }
 
+export async function fetchNotificationStatusApi() {
+  return apiRequest("/api/vacitech/notifications/status");
+}
+
+export async function sendNotificationTestApi() {
+  return apiRequest("/api/vacitech/notifications/test", {
+    method: "POST",
+    body: JSON.stringify({ target: "farm" }),
+  });
+}
+
 export async function fetchBirdLotsApi() {
   return apiRequest("/birdlots");
 }

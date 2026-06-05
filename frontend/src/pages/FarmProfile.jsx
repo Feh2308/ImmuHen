@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import {
   DEFAULT_RANCHES,
@@ -7,7 +7,11 @@ import {
   normalizeRanches,
   writeJson,
 } from "../utils/vacitechStorage";
-import { saveFarmProfileApi } from "../services/vacitechApi";
+import {
+  fetchNotificationStatusApi,
+  saveFarmProfileApi,
+  sendNotificationTestApi,
+} from "../services/vacitechApi";
 
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -69,6 +73,22 @@ function FarmProfile() {
       ? normalizeImportantContacts(savedProfile.importantContacts)
       : [{ id: "gerente", role: "Gerente", name: "", phone: "" }],
   });
+  const [notificationStatus, setNotificationStatus] = useState(null);
+  const [notificationMessage, setNotificationMessage] = useState("");
+  const [notificationTestLoading, setNotificationTestLoading] = useState(false);
+
+  useEffect(() => {
+    async function loadNotificationStatus() {
+      try {
+        const status = await fetchNotificationStatusApi();
+        setNotificationStatus(status);
+      } catch (error) {
+        console.log(error);
+      }
+    }
+
+    loadNotificationStatus();
+  }, []);
 
   function updateForm(field, value) {
     setForm({
@@ -210,6 +230,34 @@ function FarmProfile() {
     }
 
     alert("Perfil salvo com sucesso!");
+  }
+
+  async function testNotification() {
+    setNotificationTestLoading(true);
+    setNotificationMessage("");
+
+    try {
+      const data = await sendNotificationTestApi();
+      const statuses = data.delivered || [];
+      const whatsapp = statuses.find((item) => item.channel === "WHATSAPP");
+      const email = statuses.find((item) => item.channel === "EMAIL");
+      const preferredStatus = whatsapp || email;
+
+      if (!preferredStatus) {
+        setNotificationMessage("Nenhum contato de notificacao foi encontrado. Informe email ou WhatsApp e salve o perfil.");
+      } else if (preferredStatus.status === "SENT") {
+        setNotificationMessage(`Teste enviado por ${preferredStatus.channel}.`);
+      } else {
+        setNotificationMessage(`${preferredStatus.channel}: ${preferredStatus.status}. ${preferredStatus.lastError || ""}`.trim());
+      }
+
+      const status = await fetchNotificationStatusApi();
+      setNotificationStatus(status);
+    } catch (error) {
+      setNotificationMessage(error.message);
+    } finally {
+      setNotificationTestLoading(false);
+    }
   }
 
   const normalizedRanches = normalizeRanches(form.ranches);
@@ -369,6 +417,39 @@ function FarmProfile() {
                     className="rounded-xl border border-green-100 bg-green-50 p-3 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
                   />
                 </label>
+
+                <div className="rounded-2xl border border-green-100 bg-green-50 p-4 lg:col-span-2">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                        Envio externo
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-600">
+                        WhatsApp: {notificationStatus?.configured?.whatsapp ? "configurado" : "nao configurado"} | Email: {notificationStatus?.configured?.email ? "configurado" : "nao configurado"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={testNotification}
+                      disabled={notificationTestLoading}
+                      className="rounded-xl bg-green-600 px-4 py-3 font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {notificationTestLoading ? "Testando..." : "Testar notificacao"}
+                    </button>
+                  </div>
+
+                  {notificationMessage && (
+                    <p className="mt-3 rounded-xl border border-green-100 bg-white p-3 text-sm font-semibold text-zinc-700">
+                      {notificationMessage}
+                    </p>
+                  )}
+
+                  {notificationStatus?.recentOutbox?.[0]?.lastError && (
+                    <p className="mt-2 text-sm text-red-600">
+                      Ultimo erro: {notificationStatus.recentOutbox[0].lastError}
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
 

@@ -603,6 +603,46 @@ app.get("/api/vacitech/state", async (req, res) => {
   res.json(tenantData);
 });
 
+app.get("/api/vacitech/notifications/status", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+
+  res.json({
+    configured: {
+      email: Boolean(getSmtpTransport()),
+      whatsapp: Boolean(whatsappApiUrl),
+    },
+    contact: getFarmNotificationContact(data, req.tenantId, tenantData),
+    recentOutbox: (tenantData.notificationOutbox || []).slice(0, 12),
+  });
+});
+
+app.post("/api/vacitech/notifications/test", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const notification = {
+    id: `test-${Date.now()}`,
+    type: "TEST_NOTIFICATION",
+    title: "Teste de notificacao ImmuHen",
+    message: "Se voce recebeu esta mensagem, o contato de notificacao esta funcionando.",
+    farmName: tenantData.farmProfile?.farmName || "Granja",
+    createdAt: new Date().toLocaleString("pt-BR"),
+    read: false,
+  };
+  const delivered = await queueFarmExternalNotification(data, req.tenantId, tenantData, notification, {
+    dedupeKey: `test-notification:${Date.now()}`,
+  });
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    notification,
+    delivered,
+    notificationOutbox: tenantData.notificationOutbox,
+  });
+});
+
 app.put("/api/vacitech/farm-profile", async (req, res) => {
   const data = await readVacitechData();
   const tenantData = getTenantData(data, req.tenantId);
@@ -900,12 +940,17 @@ app.patch("/api/vacitech/requests/:id/status", async (req, res) => {
   ));
 
   if (status === "CONCLUIDA") {
+    const notification = createVaccinationCompletedNotification(updatedRequest);
+
     tenantData.notifications = removeNotificationsForRequest(
       tenantData.notifications,
       updatedRequest.id,
       "VACCINATION_COMPLETED"
     );
-    tenantData.notifications.push(createVaccinationCompletedNotification(updatedRequest));
+    tenantData.notifications.push(notification);
+    await queueFarmExternalNotification(data, targetTenantId, tenantData, notification, {
+      dedupeKey: `vaccination-completed:${updatedRequest.id}:${updatedRequest.completedAtIso || Date.now()}`,
+    });
   }
 
   data.tenants[targetTenantId] = tenantData;
@@ -915,6 +960,8 @@ app.patch("/api/vacitech/requests/:id/status", async (req, res) => {
     request: updatedRequest,
     requests: tenantData.requests,
     schedules: tenantData.schedules,
+    notifications: tenantData.notifications,
+    notificationOutbox: tenantData.notificationOutbox,
   });
 });
 
@@ -1221,7 +1268,11 @@ app.patch("/api/vacitech/requests/:id/temperature-photo", async (req, res) => {
     updatedRequest.id,
     "TEMPERATURE_PHOTO"
   );
-  tenantData.notifications.push(createTemperaturePhotoNotification(updatedRequest));
+  const notification = createTemperaturePhotoNotification(updatedRequest);
+  tenantData.notifications.push(notification);
+  await queueFarmExternalNotification(data, targetTenantId, tenantData, notification, {
+    dedupeKey: `temperature-photo:${updatedRequest.id}:${updatedRequest.temperaturePhotoCapturedAt || Date.now()}`,
+  });
 
   data.tenants[targetTenantId] = tenantData;
   await writeVacitechData(data);
@@ -1230,6 +1281,8 @@ app.patch("/api/vacitech/requests/:id/temperature-photo", async (req, res) => {
     request: updatedRequest,
     requests: tenantData.requests,
     schedules: tenantData.schedules,
+    notifications: tenantData.notifications,
+    notificationOutbox: tenantData.notificationOutbox,
   });
 });
 
@@ -1252,6 +1305,7 @@ app.post("/api/vacitech/requests/:id/dose-request", async (req, res) => {
   const requestedAt = new Date().toLocaleString("pt-BR");
   const message = String(req.body.message || "O vacinador solicitou doses adicionais.").trim();
   let updatedRequest = null;
+  let doseNotification = null;
 
   tenantData.requests = tenantData.requests.map((request) => {
     if (String(request.id) !== String(req.params.id)) {
@@ -1270,7 +1324,8 @@ app.post("/api/vacitech/requests/:id/dose-request", async (req, res) => {
       doseRequest,
     };
 
-    tenantData.notifications.push(createDoseRequestNotification(updatedRequest, doseRequest));
+    doseNotification = createDoseRequestNotification(updatedRequest, doseRequest);
+    tenantData.notifications.push(doseNotification);
 
     return updatedRequest;
   });
@@ -1289,6 +1344,9 @@ app.post("/api/vacitech/requests/:id/dose-request", async (req, res) => {
         }
       : schedule
   ));
+  await queueFarmExternalNotification(data, targetTenantId, tenantData, doseNotification, {
+    dedupeKey: `dose-request:${updatedRequest.id}:${requestedAt}`,
+  });
 
   data.tenants[targetTenantId] = tenantData;
   await writeVacitechData(data);
@@ -1296,6 +1354,7 @@ app.post("/api/vacitech/requests/:id/dose-request", async (req, res) => {
   res.json({
     request: updatedRequest,
     notifications: tenantData.notifications,
+    notificationOutbox: tenantData.notificationOutbox,
   });
 });
 
@@ -2923,7 +2982,7 @@ async function queueVaccinatorExternalNotification(tenantData, notification, vac
     vaccinator.phone || notification.vaccinatorPhone
   );
 
-  await queueExternalNotification(tenantData, {
+  const emailItem = await queueExternalNotification(tenantData, {
     channel: "EMAIL",
     to: targets.email,
     subject,
@@ -2931,13 +2990,15 @@ async function queueVaccinatorExternalNotification(tenantData, notification, vac
     dedupeKey,
   });
 
-  await queueExternalNotification(tenantData, {
+  const whatsappItem = await queueExternalNotification(tenantData, {
     channel: "WHATSAPP",
     to: targets.phone,
     subject,
     message,
     dedupeKey,
   });
+
+  return [emailItem, whatsappItem].filter(Boolean);
 }
 
 function getFarmNotificationContact(data, tenantId, tenantData) {
@@ -2954,7 +3015,7 @@ async function queueFarmExternalNotification(data, tenantId, tenantData, notific
   const message = `${subject}\n\n${notification.message || ""}\n\nGranja: ${tenantData.farmProfile?.farmName || "-"}`;
   const dedupeKey = options.dedupeKey || `${notification.type}:${notification.requestId || notification.id}`;
 
-  await queueExternalNotification(tenantData, {
+  const emailItem = await queueExternalNotification(tenantData, {
     channel: "EMAIL",
     to: normalizeEmail(contact.email),
     subject,
@@ -2962,13 +3023,15 @@ async function queueFarmExternalNotification(data, tenantId, tenantData, notific
     dedupeKey,
   });
 
-  await queueExternalNotification(tenantData, {
+  const whatsappItem = await queueExternalNotification(tenantData, {
     channel: "WHATSAPP",
     to: normalizeWhatsappPhone(contact.phone),
     subject,
     message,
     dedupeKey,
   });
+
+  return [emailItem, whatsappItem].filter(Boolean);
 }
 
 function getDateOnly(value) {
