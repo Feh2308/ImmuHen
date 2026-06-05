@@ -10,9 +10,11 @@ const { PrismaClient } = require("@prisma/client");
 const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
+const dns = require("dns");
 
 const app = express();
 const prisma = new PrismaClient();
+dns.setDefaultResultOrder("ipv4first");
 const appStateId = "immuhen-main";
 const vacitechDataFile = process.env.VACITECH_DATA_FILE
   ? path.resolve(process.env.VACITECH_DATA_FILE)
