@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   DEFAULT_RANCHES,
   getFarmProfile,
+  hasAccountSession,
   normalizeImportantContacts,
   normalizeRanches,
   writeJson,
@@ -28,6 +29,12 @@ function FarmSetup() {
       ? normalizeImportantContacts(savedProfile.importantContacts)
       : [{ id: "gerente", role: "Gerente", name: "", phone: "" }],
   });
+
+  useEffect(() => {
+    if (!hasAccountSession()) {
+      navigate("/", { replace: true });
+    }
+  }, [navigate]);
 
   function updateForm(field, value) {
     setForm({
@@ -152,6 +159,13 @@ function FarmSetup() {
                 Primeira configuracao
               </p>
             </div>
+
+            <Link
+              to="/"
+              className="mt-6 inline-flex rounded-xl border border-green-500 px-5 py-3 font-bold text-green-200 transition hover:bg-green-900"
+            >
+              Ja tenho conta
+            </Link>
           </section>
 
           <form

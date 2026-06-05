@@ -131,6 +131,14 @@ export function clearAccountSession() {
   emitTenantChanged("");
 }
 
+export function hasAccountSession() {
+  if (!canUseStorage()) {
+    return false;
+  }
+
+  return Boolean(localStorage.getItem("token"));
+}
+
 export function notifyTenantStorageReady() {
   emitTenantChanged();
 }

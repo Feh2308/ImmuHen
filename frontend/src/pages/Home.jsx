@@ -12,6 +12,7 @@ import {
 import {
   clearAccountSession,
   getFarmProfile,
+  hasAccountSession,
   hasCompleteFarmProfile,
   writeJson,
 } from "../utils/vacitechStorage";
@@ -37,6 +38,11 @@ function Welcome() {
   });
 
   useEffect(() => {
+
+    if (!hasAccountSession()) {
+      navigate("/", { replace: true });
+      return;
+    }
 
     if (!hasCompleteFarmProfile(farmProfile)) {
       navigate("/cadastro-granja");
@@ -98,6 +104,10 @@ function Welcome() {
     let active = true;
 
     async function loadFarmProfile() {
+      if (!hasAccountSession()) {
+        return;
+      }
+
       try {
         const state = await fetchSharedStateApi();
         const apiProfile = state?.farmProfile;
@@ -128,7 +138,7 @@ function Welcome() {
   function closeSystem() {
     clearAccountSession();
     sessionStorage.removeItem("stockAuthorized");
-    navigate("/");
+    navigate("/", { replace: true });
   }
 
   function handleStockAccess() {
