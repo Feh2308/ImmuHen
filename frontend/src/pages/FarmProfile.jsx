@@ -239,16 +239,15 @@ function FarmProfile() {
     try {
       const data = await sendNotificationTestApi();
       const statuses = data.delivered || [];
-      const whatsapp = statuses.find((item) => item.channel === "WHATSAPP");
       const email = statuses.find((item) => item.channel === "EMAIL");
-      const preferredStatus = whatsapp || email;
+      const preferredStatus = email;
 
       if (!preferredStatus) {
-        setNotificationMessage("Nenhum contato de notificacao foi encontrado. Informe email ou WhatsApp e salve o perfil.");
+        setNotificationMessage("Nenhum email de notificacao foi encontrado. Informe um email e salve o perfil.");
       } else if (preferredStatus.status === "SENT") {
-        setNotificationMessage(`Teste enviado por ${preferredStatus.channel}.`);
+        setNotificationMessage("Teste enviado por email.");
       } else {
-        setNotificationMessage(`${preferredStatus.channel}: ${preferredStatus.status}. ${preferredStatus.lastError || ""}`.trim());
+        setNotificationMessage(`EMAIL: ${preferredStatus.status}. ${preferredStatus.lastError || ""}`.trim());
       }
 
       const status = await fetchNotificationStatusApi();
@@ -408,12 +407,12 @@ function FarmProfile() {
                 </label>
 
                 <label className="grid gap-2 text-sm font-semibold text-zinc-700 lg:col-span-2">
-                  Contato de notificacao
+                  Email de notificacao
                   <input
-                    type="text"
+                    type="email"
                     value={form.notificationContact}
                     onChange={(event) => updateForm("notificationContact", event.target.value)}
-                    placeholder="Email ou WhatsApp"
+                    placeholder="email@granja.com"
                     className="rounded-xl border border-green-100 bg-green-50 p-3 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
                   />
                 </label>
@@ -425,7 +424,7 @@ function FarmProfile() {
                         Envio externo
                       </p>
                       <p className="mt-1 text-sm text-zinc-600">
-                        WhatsApp: {notificationStatus?.configured?.whatsapp ? "configurado" : "nao configurado"} | Email: {notificationStatus?.configured?.email ? "configurado" : "nao configurado"}
+                        Email: {notificationStatus?.configured?.email ? "configurado" : "nao configurado"}
                       </p>
                     </div>
                     <button

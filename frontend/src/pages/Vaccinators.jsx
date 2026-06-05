@@ -430,10 +430,10 @@ function Vaccinators() {
             </label>
 
             <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Contato de notificacao
+              Email de notificacao
               <input
-                type="text"
-                placeholder="Email ou WhatsApp"
+                type="email"
+                placeholder="email@vacinador.com"
                 value={form.notificationContact}
                 onChange={(event) => updateForm("notificationContact", event.target.value)}
                 className="rounded-xl border border-green-100 bg-green-50 p-3 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
@@ -496,8 +496,8 @@ function Vaccinators() {
                 </p>
 
                 <p>
-                  <span className="font-bold text-zinc-900">Notificacoes:</span>{" "}
-                  {vaccinator.notificationContact || "Padrao do cadastro"}
+                  <span className="font-bold text-zinc-900">Email de notificacao:</span>{" "}
+                  {vaccinator.notificationContact || vaccinator.email || "Nao informado"}
                 </p>
               </div>
 
@@ -560,8 +560,8 @@ function Vaccinators() {
                   />
 
                   <input
-                    type="text"
-                    placeholder="Contato de notificacao"
+                    type="email"
+                    placeholder="Email de notificacao"
                     value={editForm.notificationContact}
                     onChange={(event) => updateEditForm("notificationContact", event.target.value)}
                     className="rounded-lg border border-green-100 bg-white p-3 text-zinc-900 outline-none focus:border-green-500"

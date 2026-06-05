@@ -235,12 +235,12 @@ function FarmSetup() {
             </label>
 
             <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Contato de notificacao
+              Email de notificacao
               <input
-                type="text"
+                type="email"
                 value={form.notificationContact}
                 onChange={(event) => updateForm("notificationContact", event.target.value)}
-                placeholder="Email ou WhatsApp"
+                placeholder="email@granja.com"
                 className="rounded-xl border border-green-100 bg-green-50 p-4 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
               />
             </label>

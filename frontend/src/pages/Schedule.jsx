@@ -2508,7 +2508,7 @@ function getMapsLink(location) {
                   {(schedule.vaccinatorEmail || schedule.vaccinatorPhone || schedule.vaccinatorNotificationContact) && (
                     <p className="mt-1 text-zinc-500">
                       Contato: {schedule.vaccinatorPhone || "-"} | {schedule.vaccinatorEmail || "-"}
-                      {schedule.vaccinatorNotificationContact ? ` | Notificacoes: ${schedule.vaccinatorNotificationContact}` : ""}
+                      {schedule.vaccinatorNotificationContact ? ` | Email de notificacao: ${schedule.vaccinatorNotificationContact}` : ""}
                     </p>
                   )}
 

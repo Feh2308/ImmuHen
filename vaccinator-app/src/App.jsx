@@ -734,7 +734,7 @@ function App() {
       );
       setNotificationContactDirty(false);
       setPortalData(data);
-      setInstallMessage("Contato de notificacao salvo.");
+      setInstallMessage("Email de notificacao salvo.");
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -820,7 +820,7 @@ function App() {
           <h1>{vaccinator?.name || session.name}</h1>
           <p>{vaccinator?.email} | {vaccinator?.phone}</p>
           {vaccinator?.notificationContact && (
-            <p>Notificacoes: {vaccinator.notificationContact}</p>
+            <p>Email de notificacao: {vaccinator.notificationContact}</p>
           )}
         </div>
 
@@ -847,12 +847,12 @@ function App() {
 
       <section className="notification-contact-panel">
         <label>
-          Contato de notificacao
+          Email de notificacao
           <input
-            type="text"
+            type="email"
             value={notificationContactDraft}
             onChange={(event) => updateNotificationContact(event.target.value)}
-            placeholder="Email ou WhatsApp"
+            placeholder="email@vacinador.com"
           />
         </label>
         <button type="button" onClick={saveNotificationContact} disabled={loading}>

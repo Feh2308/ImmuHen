@@ -168,7 +168,7 @@ function VaccinatorPortal() {
 
     writeJson("vaccinators", nextVaccinators);
     setVaccinator(updatedVaccinator || vaccinator);
-    alert("Contato de notificacao salvo.");
+    alert("Email de notificacao salvo.");
   }
 
   function answerRequest(request, status) {
@@ -290,7 +290,7 @@ function VaccinatorPortal() {
 
               {vaccinator.notificationContact && (
                 <p className="mt-1 text-zinc-500">
-                  Notificacoes: {vaccinator.notificationContact}
+                  Email de notificacao: {vaccinator.notificationContact}
                 </p>
               )}
             </div>
@@ -308,12 +308,12 @@ function VaccinatorPortal() {
         <section className="mt-6 rounded-2xl border border-green-100 bg-white p-6 shadow-sm">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Contato de notificacao
+              Email de notificacao
               <input
-                type="text"
+                type="email"
                 value={notificationContact}
                 onChange={(event) => setNotificationContact(event.target.value)}
-                placeholder="Email ou WhatsApp"
+                placeholder="email@vacinador.com"
                 className="rounded-xl border border-green-100 bg-green-50 p-4 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
               />
             </label>

@@ -35,8 +35,6 @@ const smtpUser = process.env.SMTP_USER || "";
 const smtpPass = process.env.SMTP_PASS || "";
 const smtpSecure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || smtpPort === 465;
 const notificationFromEmail = process.env.NOTIFICATION_FROM_EMAIL || smtpUser || "";
-const whatsappApiUrl = process.env.WHATSAPP_API_URL || "";
-const whatsappApiToken = process.env.WHATSAPP_API_TOKEN || "";
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
@@ -610,7 +608,6 @@ app.get("/api/vacitech/notifications/status", async (req, res) => {
   res.json({
     configured: {
       email: Boolean(getSmtpTransport()),
-      whatsapp: Boolean(whatsappApiUrl),
     },
     contact: getFarmNotificationContact(data, req.tenantId, tenantData),
     recentOutbox: (tenantData.notificationOutbox || []).slice(0, 12),
@@ -2846,38 +2843,13 @@ function getSmtpTransport() {
   return smtpTransport;
 }
 
-function normalizeWhatsappPhone(value) {
-  const digits = normalizePhone(value);
-
-  if (!digits) {
-    return "";
-  }
-
-  return digits.startsWith("55") ? digits : `55${digits}`;
-}
-
-function resolveNotificationTargets(primaryContact, fallbackEmail = "", fallbackPhone = "") {
+function resolveNotificationTargets(primaryContact, fallbackEmail = "") {
   const contact = String(primaryContact || "").trim();
 
-  if (contact) {
-    if (contact.includes("@")) {
-      return {
-        email: normalizeEmail(contact),
-        phone: "",
-      };
-    }
-
-    const phone = normalizeWhatsappPhone(contact);
-
-    return {
-      email: "",
-      phone: phone || normalizeWhatsappPhone(fallbackPhone),
-    };
-  }
-
   return {
-    email: normalizeEmail(fallbackEmail),
-    phone: normalizeWhatsappPhone(fallbackPhone),
+    email: contact.includes("@")
+      ? normalizeEmail(contact)
+      : normalizeEmail(fallbackEmail),
   };
 }
 
@@ -2900,33 +2872,10 @@ async function deliverOutboxItem(outboxItem) {
         subject: outboxItem.subject,
         text: outboxItem.message,
       });
-    } else if (outboxItem.channel === "WHATSAPP") {
-      if (!whatsappApiUrl) {
-        outboxItem.status = "PENDING_CONFIG";
-        outboxItem.lastError = "Configure WHATSAPP_API_URL no servidor.";
-        return outboxItem;
-      }
-
-      const headers = {
-        "Content-Type": "application/json",
-        ...(whatsappApiToken ? { Authorization: `Bearer ${whatsappApiToken}` } : {}),
-      };
-      const response = await fetch(whatsappApiUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          to: outboxItem.to,
-          phone: outboxItem.to,
-          message: outboxItem.message,
-          text: outboxItem.message,
-          subject: outboxItem.subject,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.text().catch(() => "");
-        throw new Error(data || "Falha ao enviar WhatsApp.");
-      }
+    } else {
+      outboxItem.status = "FAILED";
+      outboxItem.lastError = "Canal de notificacao nao suportado. Use EMAIL.";
+      return outboxItem;
     }
 
     outboxItem.status = "SENT";
@@ -2978,8 +2927,7 @@ async function queueVaccinatorExternalNotification(tenantData, notification, vac
   const dedupeKey = options.dedupeKey || `${notification.type}:${notification.requestId || notification.id}`;
   const targets = resolveNotificationTargets(
     vaccinator.notificationContact || notification.vaccinatorNotificationContact,
-    vaccinator.email || notification.vaccinatorEmail,
-    vaccinator.phone || notification.vaccinatorPhone
+    vaccinator.email || notification.vaccinatorEmail
   );
 
   const emailItem = await queueExternalNotification(tenantData, {
@@ -2990,23 +2938,14 @@ async function queueVaccinatorExternalNotification(tenantData, notification, vac
     dedupeKey,
   });
 
-  const whatsappItem = await queueExternalNotification(tenantData, {
-    channel: "WHATSAPP",
-    to: targets.phone,
-    subject,
-    message,
-    dedupeKey,
-  });
-
-  return [emailItem, whatsappItem].filter(Boolean);
+  return [emailItem].filter(Boolean);
 }
 
 function getFarmNotificationContact(data, tenantId, tenantData) {
   const farmProfile = tenantData.farmProfile || {};
   const accountEmail = getAccountEmailByTenantId(data, tenantId);
-  const importantContact = normalizeImportantContacts(farmProfile.importantContacts).find((contact) => contact.phone);
 
-  return resolveNotificationTargets(farmProfile.notificationContact, accountEmail, importantContact?.phone || "");
+  return resolveNotificationTargets(farmProfile.notificationContact, accountEmail);
 }
 
 async function queueFarmExternalNotification(data, tenantId, tenantData, notification, options = {}) {
@@ -3023,15 +2962,7 @@ async function queueFarmExternalNotification(data, tenantId, tenantData, notific
     dedupeKey,
   });
 
-  const whatsappItem = await queueExternalNotification(tenantData, {
-    channel: "WHATSAPP",
-    to: normalizeWhatsappPhone(contact.phone),
-    subject,
-    message,
-    dedupeKey,
-  });
-
-  return [emailItem, whatsappItem].filter(Boolean);
+  return [emailItem].filter(Boolean);
 }
 
 function getDateOnly(value) {
