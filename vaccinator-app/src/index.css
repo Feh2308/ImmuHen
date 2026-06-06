@@ -552,6 +552,86 @@ textarea:focus {
   resize: none;
 }
 
+.vaccine-list-box {
+  background: #ffffff;
+}
+
+.vaccine-usage-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.vaccine-usage-card {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.vaccine-usage-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.vaccine-usage-head h4 {
+  color: #18181b;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.vaccine-usage-head p {
+  color: #52525b;
+  font-size: 0.86rem;
+  font-weight: 700;
+  margin: 4px 0 0;
+}
+
+.vaccine-usage-head span {
+  background: #ffffff;
+  border-radius: 999px;
+  color: #15803d;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 7px 9px;
+  white-space: nowrap;
+}
+
+.vaccine-usage-details {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vaccine-usage-details p,
+.vaccine-labor {
+  background: #ffffff;
+  border: 1px solid #dcfce7;
+  border-radius: 12px;
+  color: #18181b;
+  font-size: 0.88rem;
+  font-weight: 800;
+  margin: 0;
+  padding: 10px;
+}
+
+.vaccine-usage-details strong {
+  color: #15803d;
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.vaccine-labor {
+  color: #3f3f46;
+}
+
 .postpone-grid {
   display: grid;
   gap: 10px;

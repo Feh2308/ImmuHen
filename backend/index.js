@@ -2785,6 +2785,7 @@ function normalizeVaccineUsages(value) {
         vaccineId: String(item.vaccineId || "").trim(),
         vacina: String(item.vacina || item.name || "Vacina").trim(),
         codigo: String(item.codigo || "").trim(),
+        fabricante: String(item.fabricante || item.manufacturer || "").trim(),
         doses: Number(item.doses || birdsPerFlask || 0),
         flaskCc,
         dosePerBirdCc,

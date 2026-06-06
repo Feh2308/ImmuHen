@@ -102,7 +102,21 @@ function formatCurrency(value) {
 }
 
 function getLaborCost(record) {
-  return parseQuantity(record?.programLaborCost ?? record?.laborCost ?? 0);
+  const directCost = parseQuantity(record?.laborCost);
+
+  if (directCost > 0) {
+    return directCost;
+  }
+
+  const usageCost = Array.isArray(record?.vaccineUsages)
+    ? record.vaccineUsages.reduce((total, usage) => total + getUsageLaborCost(usage), 0)
+    : 0;
+
+  return usageCost || parseQuantity(record?.programLaborCost);
+}
+
+function getUsageLaborCost(usage) {
+  return parseQuantity(usage?.laborCost ?? usage?.maoDeObra ?? 0);
 }
 
 function getRequestTotalDoses(request) {
@@ -206,6 +220,7 @@ function getRecordMaterials(record) {
     .map((item) => ({
       id: item.id || item.vaccineId || item.codigo || item.vacina,
       vacina: item.vacina || item.name || "Vacina",
+      fabricante: item.fabricante || item.manufacturer || "",
       doses: parseQuantity(item.doses),
       technicalDetails: item.technicalDetails || getUsageTechnicalText(item),
       source: item.source || "",
@@ -1067,13 +1082,40 @@ function App() {
                 </div>
 
                 {Array.isArray(request.vaccineUsages) && request.vaccineUsages.length > 0 && (
-                  <div className="dose-box">
-                    <strong>Vacinas do agendamento</strong>
-                    {request.vaccineUsages.map((usage, index) => (
-                      <p key={`${usage.vaccineId}-${index}`}>
-                        {usage.vacina || "Vacina"}: {usage.doses} doses{getUsageTechnicalText(usage) ? ` | ${getUsageTechnicalText(usage)}` : ""}{usage.applicationMethod ? ` | ${usage.applicationMethod}` : ""}
-                      </p>
-                    ))}
+                  <div className="dose-box vaccine-list-box">
+                    <strong>Vacinas usadas</strong>
+                    <div className="vaccine-usage-grid">
+                      {request.vaccineUsages.map((usage, index) => {
+                        const flaskCc = String(usage.flaskCc || usage.flasks || usage.frascos || "").trim();
+                        const dosePerBirdCc = String(usage.dosePerBirdCc || "").trim();
+                        const birdsPerFlask = Number(usage.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
+
+                        return (
+                          <article className="vaccine-usage-card" key={`${usage.vaccineId}-${index}`}>
+                            <div className="vaccine-usage-head">
+                              <div>
+                                <h4>{usage.vacina || "Vacina"}</h4>
+                                <p>Fabricante: {usage.fabricante || usage.manufacturer || "-"}</p>
+                              </div>
+                              <span>{formatQuantity(usage.doses)} doses</span>
+                            </div>
+
+                            <div className="vaccine-usage-details">
+                              <p><strong>Frasco</strong>{flaskCc ? `${flaskCc} cc` : "-"}</p>
+                              <p><strong>Dose/ave</strong>{dosePerBirdCc ? `${dosePerBirdCc} cc` : "-"}</p>
+                              <p><strong>Aves/frasco</strong>{birdsPerFlask > 0 ? formatQuantity(birdsPerFlask) : "-"}</p>
+                              <p><strong>Via</strong>{usage.applicationMethod || "-"}</p>
+                            </div>
+
+                            {getUsageLaborCost(usage) > 0 && (
+                              <p className="vaccine-labor">
+                                Mao de obra: {formatCurrency(getUsageLaborCost(usage))}
+                              </p>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
