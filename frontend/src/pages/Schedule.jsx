@@ -163,7 +163,29 @@ function formatCurrency(value) {
 }
 
 function getLaborCost(record) {
-  return parseQuantity(record?.programLaborCost ?? record?.laborCost ?? 0);
+  const directCost = parseQuantity(record?.laborCost);
+
+  if (directCost > 0) {
+    return directCost;
+  }
+
+  const usageCost = getUsagesLaborCost(record?.vaccineUsages || []);
+
+  if (usageCost > 0) {
+    return usageCost;
+  }
+
+  return parseQuantity(record?.programLaborCost ?? 0);
+}
+
+function getUsageLaborCost(usage) {
+  return parseQuantity(usage?.laborCost ?? usage?.maoDeObra ?? 0);
+}
+
+function getUsagesLaborCost(usages = [], multiplier = 1) {
+  return usages.reduce((total, usage) => (
+    total + (getUsageLaborCost(usage) * multiplier)
+  ), 0);
 }
 
 function getRecordDateValue(record) {
@@ -256,6 +278,7 @@ function createProgramUsage(rowId, defaultMethod = "Ocular") {
     doses: "",
     flaskCc: "",
     dosePerBirdCc: "",
+    laborCost: "",
     applicationMethod: defaultMethod,
   };
 }
@@ -290,7 +313,7 @@ function Schedule() {
   const [notifications, setNotifications] = useState(() => readJson("vaccinatorNotifications", []));
   const [showForm, setShowForm] = useState(false);
   const [vaccineUsages, setVaccineUsages] = useState([
-    { id: "uso-1", vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", applicationMethod: "Ocular" },
+    { id: "uso-1", vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" },
   ]);
   const [programRows, setProgramRows] = useState(() => createProgramRows(""));
   const [editingScheduleId, setEditingScheduleId] = useState(null);
@@ -398,7 +421,7 @@ function Schedule() {
 
       current.totalDoses += getScheduleTotalDoses(schedule);
       current.vaccineCost += getScheduleVaccineCost(schedule);
-      current.laborCost = Math.max(current.laborCost, getLaborCost(schedule));
+      current.laborCost += getLaborCost(schedule);
 
       usages.forEach((usage) => {
         const name = usage.vacina || getVaccine(usage.vaccineId)?.nome || "Vacina";
@@ -512,7 +535,7 @@ function Schedule() {
       observations: "",
     });
     setVaccineUsages([
-      { id: `uso-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", applicationMethod: "Ocular" },
+      { id: `uso-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" },
     ]);
     setProgramRows(createProgramRows(""));
   }
@@ -528,14 +551,14 @@ function Schedule() {
   function addVaccineUsage() {
     setVaccineUsages((currentUsages) => [
       ...currentUsages,
-      { id: `uso-${Date.now()}-${currentUsages.length}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", applicationMethod: "Ocular" },
+      { id: `uso-${Date.now()}-${currentUsages.length}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" },
     ]);
   }
 
   function removeVaccineUsage(id) {
     setVaccineUsages((currentUsages) => (
       currentUsages.length === 1
-        ? [{ id: `uso-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", applicationMethod: "Ocular" }]
+        ? [{ id: `uso-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" }]
         : currentUsages.filter((usage) => usage.id !== id)
     ));
   }
@@ -641,6 +664,7 @@ function Schedule() {
           codigo: vaccine?.codigo || "-",
           doses: parseQuantity(usage.doses) || calculatedDoses,
           ...metrics,
+          laborCost: getUsageLaborCost(usage),
           applicationMethod: usage.applicationMethod || "Ocular",
         };
       });
@@ -671,6 +695,7 @@ function Schedule() {
               codigo: vaccine?.codigo || "-",
               doses: parseQuantity(usage.doses) || calculatedDoses,
               ...metrics,
+              laborCost: getUsageLaborCost(usage),
               applicationMethod: usage.applicationMethod || row.defaultMethod || "Ocular",
             };
           }),
@@ -707,6 +732,7 @@ function Schedule() {
           unitCost,
           totalDoses: usage.doses,
           totalCost: unitCost * usage.doses,
+          laborCost: getUsageLaborCost(usage),
           stock: calculateStock(usage.vaccineId),
         };
       }))
@@ -734,6 +760,7 @@ function Schedule() {
           unitCost,
           totalDoses: usage.doses * multiplier,
           totalCost: unitCost * usage.doses * multiplier,
+          laborCost: getUsageLaborCost(usage) * multiplier,
           stock: calculateStock(usage.vaccineId),
         };
       });
@@ -754,7 +781,7 @@ function Schedule() {
   }
 
   function getFormLaborCost() {
-    return parseQuantity(form.laborCost);
+    return getFormSimulationRows().reduce((total, row) => total + Number(row.laborCost || 0), 0);
   }
 
   function getFormTotalCost() {
@@ -776,7 +803,9 @@ function getScheduleTotalCost(schedule) {
 }
 
 function getProgramLaborCostFromRows(rows) {
-  return rows.reduce((total, row) => Math.max(total, getLaborCost(row)), 0);
+  return rows.reduce((total, row) => (
+    total + getUsagesLaborCost(row.vaccineUsages || row.usages || [])
+  ), 0);
 }
 
 function getMapsLink(location) {
@@ -823,6 +852,7 @@ function getMapsLink(location) {
           vacina: usage.vacina,
           codigo: usage.codigo,
           doses: usage.doses,
+          laborCost: getUsageLaborCost(usage),
           applicationMethod: usage.applicationMethod || schedule.applicationMethod || "",
           flaskCc: usage.flaskCc || getUsageFlaskCc(usage),
           dosePerBirdCc: usage.dosePerBirdCc || getUsageDosePerBirdCc(usage),
@@ -1020,12 +1050,13 @@ function getMapsLink(location) {
 
     const baseScheduleId = Date.now();
     const farmProfile = getFarmProfile();
-    const laborCost = getFormLaborCost();
     const savedSchedules = [];
     const savedRequests = [];
 
     for (const [index, period] of periods.entries()) {
       const scheduleId = baseScheduleId + index;
+      const periodUsages = period.vaccineUsages || normalizedVaccineUsages;
+      const laborCost = getUsagesLaborCost(periodUsages);
       const newSchedule = {
         id: scheduleId,
         vaccinatorId: selectedVaccinator.id,
@@ -1041,11 +1072,11 @@ function getMapsLink(location) {
         farmLocation: farmProfile.location || "",
         observations: form.observations.trim(),
         hasDebicagem: period.hasDebicagem || form.hasDebicagem,
-        laborCost: isProgramSchedule && period.sequenceIndex !== 0 ? 0 : laborCost,
-        programLaborCost: isProgramSchedule ? laborCost : 0,
+        laborCost,
+        programLaborCost: laborCost,
         vaccinationStartDate: period.vaccinationStartDate,
         vaccinationEndDate: period.vaccinationEndDate,
-        vaccineUsages: period.vaccineUsages || normalizedVaccineUsages,
+        vaccineUsages: periodUsages,
         applicationMethod: period.applicationMethod || "",
         programId: period.programId || "",
         programDay: period.programDay || "",
@@ -1172,6 +1203,7 @@ function getMapsLink(location) {
       doses: usage.doses || "",
       flaskCc: getUsageFlaskCc(usage),
       dosePerBirdCc: getUsageDosePerBirdCc(usage),
+      laborCost: getUsageLaborCost(usage),
       applicationMethod: usage.applicationMethod || schedule.applicationMethod || "Ocular",
     })));
   }
@@ -1190,7 +1222,7 @@ function getMapsLink(location) {
         ? currentUsages
         : [
             ...currentUsages,
-            { id: `edit-${Date.now()}-${currentUsages.length}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", applicationMethod: "Ocular" },
+            { id: `edit-${Date.now()}-${currentUsages.length}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" },
           ]
     ));
   }
@@ -1198,7 +1230,7 @@ function getMapsLink(location) {
   function removeEditingUsage(id) {
     setEditingUsages((currentUsages) => (
       currentUsages.length === 1
-        ? [{ id: `edit-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", applicationMethod: "Ocular" }]
+        ? [{ id: `edit-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" }]
         : currentUsages.filter((usage) => usage.id !== id)
     ));
   }
@@ -1223,6 +1255,7 @@ function getMapsLink(location) {
           codigo: vaccine?.codigo || "-",
           doses: parseQuantity(usage.doses) || calculatedDoses,
           ...metrics,
+          laborCost: getUsageLaborCost(usage),
           applicationMethod: usage.applicationMethod || "Ocular",
         };
       });
@@ -1909,23 +1942,11 @@ function getMapsLink(location) {
                     Custos do programa
                   </p>
                   <p className="mt-1 text-sm text-zinc-500">
-                    Informe a mao de obra e o sistema soma automaticamente com as doses previstas.
+                    Informe a mao de obra em cada vacina. O total abaixo soma vacinas e mao de obra por item.
                   </p>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-4">
-                  <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-                    Mao de obra (R$)
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={form.laborCost}
-                      onChange={(event) => updateForm("laborCost", event.target.value)}
-                      placeholder="0,00"
-                      className="rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
-                    />
-                  </label>
-
+                <div className="grid gap-4 md:grid-cols-3">
                   <div className="rounded-xl border border-green-100 bg-white p-3">
                     <p className="text-xs font-bold uppercase tracking-wide text-green-700">
                       Doses previstas
@@ -2159,7 +2180,7 @@ function getMapsLink(location) {
                         </button>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6 xl:items-end">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7 xl:items-end">
                         <label className="grid min-w-0 gap-2 text-sm font-semibold text-zinc-700">
                           Doses
                           <input
@@ -2216,6 +2237,18 @@ function getMapsLink(location) {
                               </option>
                             ))}
                           </select>
+                        </label>
+
+                        <label className="grid min-w-0 gap-2 text-sm font-semibold text-zinc-700">
+                          Mao de obra
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={usage.laborCost || ""}
+                            onChange={(event) => updateVaccineUsage(usage.id, "laborCost", event.target.value)}
+                            placeholder="0,00"
+                            className="min-w-0 w-full rounded-xl border border-green-100 bg-green-50 p-3 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
+                          />
                         </label>
 
                         <div className="grid min-w-0 gap-2 text-sm font-semibold text-zinc-700">
@@ -2378,7 +2411,7 @@ function getMapsLink(location) {
                                       </button>
                                     </div>
 
-                                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5 xl:items-end">
+                                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6 xl:items-end">
                                       <label className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
                                         CC/frasco
                                         <input
@@ -2425,11 +2458,23 @@ function getMapsLink(location) {
                                         </select>
                                       </label>
 
+                                      <label className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
+                                        Mao de obra
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          value={usage.laborCost || ""}
+                                          onChange={(event) => updateProgramUsage(row.id, usage.id, "laborCost", event.target.value)}
+                                          placeholder="0,00"
+                                          className="min-w-0 rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                                        />
+                                      </label>
+
                                       <div className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
                                         Custo
                                         <span className="min-h-[48px] rounded-xl bg-white px-3 py-3 font-bold text-green-700">
                                           {usage.vaccineId && (parseQuantity(usage.doses) || getUsageBirdsPerFlask(usage))
-                                            ? formatCurrency(getAverageDoseCost(usage.vaccineId) * (parseQuantity(usage.doses) || getUsageBirdsPerFlask(usage)))
+                                            ? formatCurrency((getAverageDoseCost(usage.vaccineId) * (parseQuantity(usage.doses) || getUsageBirdsPerFlask(usage))) + getUsageLaborCost(usage))
                                             : "-"}
                                         </span>
                                       </div>
@@ -2600,7 +2645,7 @@ function getMapsLink(location) {
                         key={`${usage.vaccineId}-${index}`}
                         className="rounded-full bg-white px-3 py-1 text-sm font-bold text-zinc-700"
                       >
-                        {usage.vacina || "Vacina"}: {usage.doses} doses{formatUsageMetrics(usage) ? ` | ${formatUsageMetrics(usage)}` : ""}{usage.applicationMethod ? ` | ${usage.applicationMethod}` : ""}
+                        {usage.vacina || "Vacina"}: {usage.doses} doses{formatUsageMetrics(usage) ? ` | ${formatUsageMetrics(usage)}` : ""}{usage.applicationMethod ? ` | ${usage.applicationMethod}` : ""}{getUsageLaborCost(usage) > 0 ? ` | Mao de obra: ${formatCurrency(getUsageLaborCost(usage))}` : ""}
                       </span>
                     ))}
                   </div>
@@ -2664,7 +2709,7 @@ function getMapsLink(location) {
                         </button>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5 xl:items-end">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6 xl:items-end">
                         <input
                           type="text"
                           inputMode="decimal"
@@ -2698,6 +2743,15 @@ function getMapsLink(location) {
                             </option>
                           ))}
                         </select>
+
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={usage.laborCost || ""}
+                          onChange={(event) => updateEditingUsage(usage.id, "laborCost", event.target.value)}
+                          placeholder="Mao de obra"
+                          className="min-w-0 rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                        />
                       </div>
                     </div>
                   ))}

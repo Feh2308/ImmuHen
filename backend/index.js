@@ -11,6 +11,7 @@ const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
 const dns = require("dns");
+const net = require("net");
 
 const app = express();
 const prisma = new PrismaClient();
@@ -610,7 +611,7 @@ app.get("/api/vacitech/notifications/status", async (req, res) => {
 
   res.json({
     configured: {
-      email: Boolean(getSmtpTransport()),
+      email: hasSmtpConfig(),
     },
     contact: getFarmNotificationContact(data, req.tenantId, tenantData),
     recentOutbox: (tenantData.notificationOutbox || []).slice(0, 12),
@@ -1073,6 +1074,9 @@ app.patch("/api/vacitech/requests/:id/vaccines", async (req, res) => {
 
   const tenantData = getTenantData(data, targetTenantId);
   const vaccineUsages = normalizeVaccineUsages(req.body.vaccineUsages);
+  const laborCost = vaccineUsages.reduce((total, usage) => (
+    total + parseDecimalValue(usage.laborCost ?? usage.maoDeObra ?? 0)
+  ), 0);
 
   if (vaccineUsages.length === 0) {
     return res.status(400).json({
@@ -1089,6 +1093,8 @@ app.patch("/api/vacitech/requests/:id/vaccines", async (req, res) => {
     updatedRequest = {
       ...request,
       vaccineUsages,
+      laborCost,
+      programLaborCost: laborCost,
       applicationMethod: vaccineUsages[0]?.applicationMethod || request.applicationMethod || "",
       vaccineChangedAt: new Date().toLocaleString("pt-BR"),
     };
@@ -1107,6 +1113,8 @@ app.patch("/api/vacitech/requests/:id/vaccines", async (req, res) => {
       ? {
           ...schedule,
           vaccineUsages,
+          laborCost,
+          programLaborCost: laborCost,
           applicationMethod: vaccineUsages[0]?.applicationMethod || schedule.applicationMethod || "",
           vaccineChangedAt: updatedRequest.vaccineChangedAt,
         }
@@ -2782,6 +2790,7 @@ function normalizeVaccineUsages(value) {
         dosePerBirdCc,
         birdsPerFlask,
         flasks: flaskCc,
+        laborCost: parseDecimalValue(item.laborCost ?? item.maoDeObra ?? 0),
         applicationMethod: String(item.applicationMethod || item.via || "").trim(),
       };
     })
@@ -2825,7 +2834,23 @@ function formatCurrency(value) {
 }
 
 function getLaborCost(record = {}) {
-  return Number(record.programLaborCost ?? record.laborCost ?? 0) || 0;
+  const directCost = Number(record.laborCost || 0);
+
+  if (directCost > 0) {
+    return directCost;
+  }
+
+  const usageCost = Array.isArray(record.vaccineUsages)
+    ? record.vaccineUsages.reduce((total, usage) => (
+        total + parseDecimalValue(usage.laborCost ?? usage.maoDeObra ?? 0)
+      ), 0)
+    : 0;
+
+  if (usageCost > 0) {
+    return usageCost;
+  }
+
+  return Number(record.programLaborCost || 0) || 0;
 }
 
 function getVaccinationTotalDoses(request = {}) {
@@ -2958,30 +2983,62 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-let smtpTransport = null;
+let smtpTransportPromise = null;
 
-function getSmtpTransport() {
+function hasSmtpConfig() {
+  return Boolean(smtpHost && smtpUser && smtpPass && notificationFromEmail);
+}
+
+async function createSmtpTransport() {
+  const hostConfig = await resolveSmtpHostForTransport();
+
+  return nodemailer.createTransport({
+    host: hostConfig.host,
+    port: smtpPort,
+    secure: smtpSecure,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+    family: 4,
+    tls: {
+      servername: smtpHost,
+    },
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
+}
+
+async function resolveSmtpHostForTransport() {
+  if (net.isIP(smtpHost)) {
+    return { host: smtpHost };
+  }
+
+  try {
+    const addresses = await dns.promises.resolve4(smtpHost);
+    const host = addresses.find(Boolean);
+
+    if (host) {
+      return { host };
+    }
+  } catch (error) {
+    console.log(`Nao foi possivel resolver SMTP em IPv4: ${error.message}`);
+  }
+
+  return { host: smtpHost };
+}
+
+async function getSmtpTransport() {
   if (!smtpHost || !smtpUser || !smtpPass || !notificationFromEmail) {
     return null;
   }
 
-  if (!smtpTransport) {
-    smtpTransport = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpSecure,
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
-      family: 4,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-    });
+  if (!smtpTransportPromise) {
+    smtpTransportPromise = createSmtpTransport();
   }
 
-  return smtpTransport;
+  return smtpTransportPromise;
 }
 
 function resolveNotificationTargets(primaryContact, fallbackEmail = "") {
@@ -2999,7 +3056,7 @@ async function deliverOutboxItem(outboxItem) {
 
   try {
     if (outboxItem.channel === "EMAIL") {
-      const transport = getSmtpTransport();
+      const transport = await getSmtpTransport();
 
       if (!transport) {
         outboxItem.status = "PENDING_CONFIG";

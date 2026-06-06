@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Sidebar from "../components/Sidebar";
 
@@ -74,6 +74,9 @@ function Entries() {
   const [doses, setDoses] =
     useState("");
 
+  const [bottles, setBottles] =
+    useState("1");
+
   const [lowStockAlertQuantity, setLowStockAlertQuantity] =
     useState("");
 
@@ -86,20 +89,44 @@ function Entries() {
   const [observacao, setObservacao] =
     useState("");
 
+  const selectedVaccine = useMemo(() => (
+    vaccines.find((vaccine) => String(vaccine.id) === String(vaccineId))
+  ), [vaccineId, vaccines]);
+
+  const dosesPerBottle = parseQuantity(selectedVaccine?.dosesPerBottle);
+  const calculatedDoses = dosesPerBottle > 0
+    ? dosesPerBottle * Math.max(1, parseQuantity(bottles) || 1)
+    : parseQuantity(doses);
+
   const totalEntrada = useMemo(() => {
-    return parseQuantity(doses) * parseMoney(valorDose);
-  }, [doses, valorDose]);
+    return calculatedDoses * parseMoney(valorDose);
+  }, [calculatedDoses, valorDose]);
 
   const selectedAlertLevel = vaccineId
     ? getStockAlertLevel(vaccineId)
     : 0;
+
+  useEffect(() => {
+    if (!selectedVaccine) {
+      return;
+    }
+
+    if (selectedVaccine.dosesPerBottle) {
+      setDoses(String(selectedVaccine.dosesPerBottle));
+      setBottles((currentBottles) => currentBottles || "1");
+    }
+
+    if (selectedVaccine.valorDosePadrao && !valorDose) {
+      setValorDose(String(selectedVaccine.valorDosePadrao));
+    }
+  }, [selectedVaccine, valorDose]);
 
   function registrarEntrada() {
 
     if (
       !vaccineId ||
       !lote ||
-      !doses ||
+      calculatedDoses <= 0 ||
       !valorDose
     ) {
       alert("Preencha vacina, lote, doses e valor por dose");
@@ -124,7 +151,15 @@ function Entries() {
 
       validade,
 
-      doses: parseQuantity(doses),
+      doses: calculatedDoses,
+
+      dosesPerBottle,
+
+      frascos: dosesPerBottle > 0
+        ? Math.max(1, parseQuantity(bottles) || 1)
+        : "",
+
+      manualDoses: parseQuantity(doses),
 
       valorDose: parseMoney(valorDose),
 
@@ -145,6 +180,7 @@ function Entries() {
     setLote("");
     setValidade("");
     setDoses("");
+    setBottles("1");
     setLowStockAlertQuantity("");
     setValorDose("");
     setFornecedor("");
@@ -172,104 +208,152 @@ function Entries() {
 
         <div className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm">
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
 
-            <select
-              value={vaccineId}
-              onChange={(e) =>
-                setVaccineId(e.target.value)
-              }
-              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
-            >
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Vacina
+              <select
+                value={vaccineId}
+                onChange={(e) =>
+                  setVaccineId(e.target.value)
+                }
+                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+              >
 
-              <option value="">
-                Selecione Vacina
-              </option>
-
-              {vaccines.map((vacina) => (
-
-                <option
-                  key={vacina.id}
-                  value={vacina.id}
-                >
-                  {vacina.nome}
+                <option value="">
+                  Selecione Vacina
                 </option>
 
-              ))}
+                {vaccines.map((vacina) => (
 
-            </select>
+                  <option
+                    key={vacina.id}
+                    value={vacina.id}
+                  >
+                    {vacina.nome}
+                  </option>
 
-            <input
-              type="text"
-              placeholder="Lote"
-              value={lote}
-              onChange={(e) =>
-                setLote(e.target.value)
-              }
-              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
-            />
+                ))}
 
-            <input
-              type="date"
-              value={validade}
-              onChange={(e) =>
-                setValidade(e.target.value)
-              }
-              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
-            />
+              </select>
+            </label>
 
-            <input
-              type="text"
-              placeholder="Doses"
-              value={doses}
-              onChange={(e) =>
-                setDoses(e.target.value)
-              }
-              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
-              inputMode="numeric"
-            />
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Lote da vacina
+              <input
+                type="text"
+                placeholder="Lote"
+                value={lote}
+                onChange={(e) =>
+                  setLote(e.target.value)
+                }
+                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+              />
+            </label>
 
-            <input
-              type="text"
-              placeholder="Avisar estoque baixo em doses"
-              value={lowStockAlertQuantity}
-              onChange={(e) =>
-                setLowStockAlertQuantity(e.target.value)
-              }
-              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
-              inputMode="numeric"
-            />
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Data de validade
+              <input
+                type="date"
+                value={validade}
+                onChange={(e) =>
+                  setValidade(e.target.value)
+                }
+                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+              />
+            </label>
 
-            <input
-              type="text"
-              placeholder="Valor por dose"
-              value={valorDose}
-              onChange={(e) =>
-                setValorDose(e.target.value)
-              }
-              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
-              inputMode="decimal"
-            />
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Valor por dose
+              <input
+                type="text"
+                placeholder="Valor por dose"
+                value={valorDose}
+                onChange={(e) =>
+                  setValorDose(e.target.value)
+                }
+                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                inputMode="decimal"
+              />
+            </label>
 
-            <input
-              type="text"
-              placeholder="Fornecedor"
-              value={fornecedor}
-              onChange={(e) =>
-                setFornecedor(e.target.value)
-              }
-              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
-            />
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Frascos recebidos
+              <input
+                type="text"
+                placeholder="1"
+                value={bottles}
+                onChange={(e) =>
+                  setBottles(e.target.value)
+                }
+                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                inputMode="decimal"
+              />
+            </label>
 
-            <input
-              type="text"
-              placeholder="Observacao"
-              value={observacao}
-              onChange={(e) =>
-                setObservacao(e.target.value)
-              }
-              className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none md:col-span-2"
-            />
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Doses dentro do frasco
+              <input
+                type="text"
+                placeholder="Doses por frasco"
+                value={dosesPerBottle > 0 ? selectedVaccine?.dosesPerBottle || "" : doses}
+                onChange={(e) =>
+                  setDoses(e.target.value)
+                }
+                readOnly={dosesPerBottle > 0}
+                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none read-only:text-zinc-500"
+                inputMode="numeric"
+              />
+            </label>
+
+            <div className="rounded-2xl border border-green-100 bg-green-50 p-4">
+              <p className="text-sm font-semibold text-zinc-600">
+                Doses totais calculadas
+              </p>
+              <p className="mt-2 text-2xl font-bold text-green-700">
+                {calculatedDoses}
+              </p>
+            </div>
+
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Avisar estoque baixo em doses
+              <input
+                type="text"
+                placeholder="Avisar estoque baixo em doses"
+                value={lowStockAlertQuantity}
+                onChange={(e) =>
+                  setLowStockAlertQuantity(e.target.value)
+                }
+                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                inputMode="numeric"
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+              Fornecedor
+              <input
+                type="text"
+                placeholder="Fornecedor"
+                value={fornecedor}
+                onChange={(e) =>
+                  setFornecedor(e.target.value)
+                }
+                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm font-semibold text-zinc-700 md:col-span-3">
+              Observacao
+              <input
+                type="text"
+                placeholder="Observacao"
+                value={observacao}
+                onChange={(e) =>
+                  setObservacao(e.target.value)
+                }
+                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+              />
+            </label>
 
           </div>
 
@@ -327,6 +411,14 @@ function Entries() {
                 </th>
 
                 <th className="pb-4">
+                  Frascos
+                </th>
+
+                <th className="pb-4">
+                  Doses/frasco
+                </th>
+
+                <th className="pb-4">
                   Valor por dose
                 </th>
 
@@ -373,6 +465,14 @@ function Entries() {
 
                   <td>
                     {entry.doses}
+                  </td>
+
+                  <td>
+                    {entry.frascos || "-"}
+                  </td>
+
+                  <td>
+                    {entry.dosesPerBottle || "-"}
                   </td>
 
                   <td>

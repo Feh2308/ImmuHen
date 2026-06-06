@@ -375,6 +375,26 @@ export function VaccineProvider({
           : vaccine
       ))
     );
+
+    setEntries((currentEntries) => currentEntries.map((entry) => (
+      String(entry.vaccineId) === String(id)
+        ? {
+            ...entry,
+            vacina: updates.nome || entry.vacina,
+            codigo: updates.codigo || entry.codigo,
+          }
+        : entry
+    )));
+
+    setOutputs((currentOutputs) => currentOutputs.map((output) => (
+      String(output.vaccineId) === String(id)
+        ? {
+            ...output,
+            vacina: updates.nome || output.vacina,
+            codigo: updates.codigo || output.codigo,
+          }
+        : output
+    )));
   }
 
   function requestVaccineEdit({ vaccineId, changes, reason, requestedBy }) {
@@ -395,6 +415,8 @@ export function VaccineProvider({
       nome: String(changes.nome || "").trim(),
       fabricante: String(changes.fabricante || "").trim(),
       observacoes: String(changes.observacoes || "").trim(),
+      dosesPerBottle: String(changes.dosesPerBottle || "").trim(),
+      valorDosePadrao: String(changes.valorDosePadrao || "").trim(),
     };
 
     const before = {
@@ -402,6 +424,8 @@ export function VaccineProvider({
       nome: vaccine.nome || "",
       fabricante: vaccine.fabricante || "",
       observacoes: vaccine.observacoes || "",
+      dosesPerBottle: vaccine.dosesPerBottle || "",
+      valorDosePadrao: vaccine.valorDosePadrao || "",
     };
 
     const changedFields = Object.keys(after).filter((field) => (
@@ -536,6 +560,31 @@ export function VaccineProvider({
     });
   }
 
+  function updateEntry(id, updates) {
+    const threshold = parseQuantity(updates.lowStockAlertQuantity);
+
+    if (updates.vaccineId && threshold > 0) {
+      setStockAlertLevel(updates.vaccineId, threshold);
+    }
+
+    setEntries((currentEntries) => currentEntries.map((entry) => (
+      String(entry.id) === String(id)
+        ? {
+            ...entry,
+            ...updates,
+            id: entry.id,
+            updatedAt: new Date().toISOString(),
+          }
+        : entry
+    )));
+  }
+
+  function removeEntry(id) {
+    setEntries((currentEntries) => currentEntries.filter((entry) => (
+      String(entry.id) !== String(id)
+    )));
+  }
+
   function addOutput(output) {
 
     setOutputs((currentOutputs) => {
@@ -579,6 +628,8 @@ export function VaccineProvider({
         rejectVaccineEdit,
 
         addEntry,
+        updateEntry,
+        removeEntry,
         addOutput,
 
         calculateStock,

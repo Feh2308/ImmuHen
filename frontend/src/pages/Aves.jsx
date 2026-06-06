@@ -9,6 +9,8 @@ import {
 import {
   getFarmProfile,
   getProfileRanches,
+  normalizeRequestStatus,
+  readJson,
 } from "../utils/vacitechStorage";
 
 const emptyForm = {
@@ -49,7 +51,10 @@ function Aves() {
   const [editingLotId, setEditingLotId] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
   const [ranchFilter, setRanchFilter] = useState("");
+  const [lotSearch, setLotSearch] = useState("");
   const [farmProfile] = useState(getFarmProfile);
+  const storedSchedules = readJson("schedules", []);
+  const schedules = Array.isArray(storedSchedules) ? storedSchedules : [];
 
   const ranchOptions = useMemo(() => {
     const profileRanches = getProfileRanches(farmProfile);
@@ -102,6 +107,33 @@ function Aves() {
       0
     );
   }, [monthlyLots]);
+
+  const recentLots = useMemo(() => (
+    [...lots]
+      .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+      .slice(0, 6)
+  ), [lots]);
+
+  const searchedLots = useMemo(() => {
+    const term = lotSearch.trim().toLowerCase();
+
+    if (!term) {
+      return [];
+    }
+
+    return lots.filter((lot) => String(lot.id || "").toLowerCase().includes(term));
+  }, [lotSearch, lots]);
+
+  function getLotVaccinations(lotId) {
+    return schedules
+      .filter((schedule) => String(schedule.birdLotId || "") === String(lotId))
+      .filter((schedule) => {
+        const status = normalizeRequestStatus(schedule.status);
+
+        return !["CONCLUIDA", "RECUSADA", "CANCELADA"].includes(status);
+      })
+      .sort((a, b) => String(a.vaccinationStartDate || a.date || "").localeCompare(String(b.vaccinationStartDate || b.date || "")));
+  }
 
   const monthlyLotsByAge = useMemo(() => {
     const groups = monthlyLots.reduce((items, lot) => {
@@ -304,6 +336,152 @@ function Aves() {
             {editingLotId ? "Salvar Alteracoes" : "Registrar"}
           </button>
         </form>
+
+        <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-[1.1fr_0.9fr]">
+          <section className="rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
+            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 className="text-3xl font-bold text-zinc-900">
+                  Todos os registrados
+                </h2>
+
+                <p className="mt-2 text-zinc-500">
+                  {lots.length} registro(s) de aves cadastrados.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 overflow-x-auto">
+              <table className="w-full text-left text-zinc-900">
+                <thead>
+                  <tr className="border-b border-green-100 text-zinc-500">
+                    <th className="pb-4">ID</th>
+                    <th className="pb-4">Rancho</th>
+                    <th className="pb-4">Linhagem</th>
+                    <th className="pb-4">Aves</th>
+                    <th className="pb-4">Alojamento</th>
+                    <th className="pb-4">Status</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {lots.map((lot) => (
+                    <tr key={lot.id} className="border-b border-green-100 last:border-b-0">
+                      <td className="py-4 font-bold text-green-700">{lot.id}</td>
+                      <td>{lot.ranchoAtual || "Pinteiro"}</td>
+                      <td>{lot.linhagem || "-"}</td>
+                      <td>{lot.avesAlojadas || 0}</td>
+                      <td>{formatDate(lot.dataAlojamento)}</td>
+                      <td>{lot.status || "Ativo"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
+            <h2 className="text-3xl font-bold text-zinc-900">
+              Registros recentes
+            </h2>
+
+            <div className="mt-6 grid gap-3">
+              {recentLots.map((lot) => (
+                <div key={lot.id} className="rounded-2xl border border-green-100 bg-green-50 p-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <strong className="text-green-700">ID {lot.id}</strong>
+                    <span className="text-sm font-semibold text-zinc-500">{lot.status || "Ativo"}</span>
+                  </div>
+                  <p className="mt-2 font-bold text-zinc-900">{lot.linhagem || "-"} - {lot.ranchoAtual || "Pinteiro"}</p>
+                  <p className="text-sm text-zinc-500">{formatDate(lot.dataAlojamento)} | {lot.avesAlojadas || 0} aves</p>
+                </div>
+              ))}
+
+              {recentLots.length === 0 && (
+                <p className="rounded-2xl bg-green-50 p-5 text-zinc-500">
+                  Nenhum registro recente.
+                </p>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <section className="mt-8 rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-zinc-900">
+                Lotes
+              </h2>
+
+              <p className="mt-2 text-zinc-500">
+                Pesquise o ID para ver se existe vacina acontecendo naquele lote e em qual data.
+              </p>
+            </div>
+
+            <input
+              type="text"
+              value={lotSearch}
+              onChange={(event) => setLotSearch(event.target.value)}
+              placeholder="Pesquisar ID do lote"
+              className="w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none xl:max-w-sm"
+            />
+          </div>
+
+          <div className="mt-6 grid gap-4">
+            {lotSearch.trim() && searchedLots.length === 0 && (
+              <p className="rounded-2xl bg-green-50 p-5 text-zinc-500">
+                Nenhum lote encontrado com esse ID.
+              </p>
+            )}
+
+            {searchedLots.map((lot) => {
+              const lotVaccinations = getLotVaccinations(lot.id);
+
+              return (
+                <div key={lot.id} className="rounded-3xl border border-green-100 bg-green-50 p-5">
+                  <div className="grid gap-4 lg:grid-cols-[0.7fr_1.3fr]">
+                    <div>
+                      <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                        Lote ID {lot.id}
+                      </p>
+                      <h3 className="mt-2 text-2xl font-bold text-zinc-900">
+                        {lot.linhagem || "-"}
+                      </h3>
+                      <p className="mt-1 text-zinc-600">
+                        {lot.ranchoAtual || "Pinteiro"} | {lot.avesAlojadas || 0} aves | {formatDate(lot.dataAlojamento)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl bg-white p-4 ring-1 ring-green-100">
+                      <p className="font-bold text-zinc-900">
+                        Vacinas neste lote
+                      </p>
+
+                      <div className="mt-3 grid gap-2">
+                        {lotVaccinations.map((schedule) => (
+                          <div key={schedule.id} className="rounded-xl border border-green-100 bg-green-50 p-3">
+                            <p className="font-bold text-green-700">
+                              {schedule.programSuggestedName || schedule.vaccineUsages?.map((usage) => usage.vacina).join(", ") || "Vacinacao"}
+                            </p>
+                            <p className="text-sm text-zinc-600">
+                              Data: {formatDate(schedule.vaccinationStartDate || schedule.date)} | Status: {normalizeRequestStatus(schedule.status)}
+                            </p>
+                          </div>
+                        ))}
+
+                        {lotVaccinations.length === 0 && (
+                          <p className="rounded-xl bg-green-50 p-3 text-zinc-500">
+                            Nenhuma vacina em andamento para este lote.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
 
         <div className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">

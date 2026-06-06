@@ -14,6 +14,34 @@ function formatCurrency(value) {
   });
 }
 
+function parseMoney(value) {
+  const parsed = Number(String(value || "0").replace(",", "."));
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseQuantity(value) {
+  const parsed = Number(String(value || "0").replace(",", "."));
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getEntryDoseValue(entry) {
+  if (entry.valorDose !== undefined) {
+    return Number(entry.valorDose || 0);
+  }
+
+  if (entry.valorTotal !== undefined && Number(entry.doses)) {
+    return Number(entry.valorTotal || 0) / Number(entry.doses);
+  }
+
+  if (entry.valor !== undefined && Number(entry.doses)) {
+    return Number(entry.valor || 0) / Number(entry.doses);
+  }
+
+  return 0;
+}
+
 function getEntryTotalValue(entry) {
   if (entry.valorTotal !== undefined) {
     return Number(entry.valorTotal || 0);
@@ -54,6 +82,10 @@ function Chief() {
     stockAlertLevels,
     vaccineEditRequests,
     vaccineAuditLog,
+    updateVaccine,
+    removeVaccine,
+    updateEntry,
+    removeEntry,
     approveVaccineEdit,
     rejectVaccineEdit,
   } = useVaccines();
@@ -69,6 +101,36 @@ function Chief() {
 
   const [accessMessage, setAccessMessage] =
     useState("");
+
+  const [editingVaccineId, setEditingVaccineId] =
+    useState("");
+
+  const [vaccineForm, setVaccineForm] =
+    useState({
+      codigo: "",
+      nome: "",
+      fabricante: "",
+      dosesPerBottle: "",
+      valorDosePadrao: "",
+      observacoes: "",
+    });
+
+  const [editingEntryId, setEditingEntryId] =
+    useState("");
+
+  const [entryForm, setEntryForm] =
+    useState({
+      vaccineId: "",
+      lote: "",
+      validade: "",
+      frascos: "",
+      dosesPerBottle: "",
+      doses: "",
+      valorDose: "",
+      lowStockAlertQuantity: "",
+      fornecedor: "",
+      observacao: "",
+    });
 
   const storedRequests = readJson("requests", []);
   const storedSchedules = readJson("schedules", []);
@@ -149,6 +211,14 @@ function Chief() {
   const maxChartDoses = Math.max(...usageChartRows.map((row) => row.doses), 1);
   const pendingEditRequests = vaccineEditRequests.filter((request) => request.status === "pending");
   const recentAuditLog = vaccineAuditLog.slice(0, 6);
+  const recentEntries = entries.slice(-10).reverse();
+  const selectedEntryVaccine = vaccines.find((vaccine) => String(vaccine.id) === String(entryForm.vaccineId));
+  const entryDosesPerBottle = parseQuantity(entryForm.dosesPerBottle || selectedEntryVaccine?.dosesPerBottle);
+  const entryBottles = Math.max(1, parseQuantity(entryForm.frascos) || 1);
+  const entryCalculatedDoses = entryDosesPerBottle > 0
+    ? entryDosesPerBottle * entryBottles
+    : parseQuantity(entryForm.doses);
+  const entryTotalValue = entryCalculatedDoses * parseMoney(entryForm.valorDose);
 
   async function handleChiefAccess() {
     setAccessLoading(true);
@@ -178,6 +248,148 @@ function Chief() {
 
   function rejectRequest(requestId) {
     rejectVaccineEdit(requestId, getCurrentUserLabel());
+  }
+
+  function startVaccineEdit(vaccine) {
+    setEditingVaccineId(vaccine.id);
+    setVaccineForm({
+      codigo: vaccine.codigo || "",
+      nome: vaccine.nome || "",
+      fabricante: vaccine.fabricante || "",
+      dosesPerBottle: vaccine.dosesPerBottle || "",
+      valorDosePadrao: vaccine.valorDosePadrao || "",
+      observacoes: vaccine.observacoes || "",
+    });
+  }
+
+  function cancelVaccineEdit() {
+    setEditingVaccineId("");
+    setVaccineForm({
+      codigo: "",
+      nome: "",
+      fabricante: "",
+      dosesPerBottle: "",
+      valorDosePadrao: "",
+      observacoes: "",
+    });
+  }
+
+  function saveVaccineEdit() {
+    if (!editingVaccineId) {
+      return;
+    }
+
+    if (!vaccineForm.codigo || !vaccineForm.nome) {
+      alert("Informe codigo e nome da vacina.");
+      return;
+    }
+
+    updateVaccine(editingVaccineId, vaccineForm);
+    cancelVaccineEdit();
+  }
+
+  function deleteVaccine(vaccineId) {
+    const confirmed = window.confirm("Excluir esta vacina do cadastro base?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    removeVaccine(vaccineId);
+  }
+
+  function startEntryEdit(entry) {
+    setEditingEntryId(entry.id);
+    setEntryForm({
+      vaccineId: entry.vaccineId || "",
+      lote: entry.lote || "",
+      validade: entry.validade || "",
+      frascos: entry.frascos || "",
+      dosesPerBottle: entry.dosesPerBottle || "",
+      doses: entry.manualDoses || entry.doses || "",
+      valorDose: String(getEntryDoseValue(entry) || ""),
+      lowStockAlertQuantity: entry.lowStockAlertQuantity || "",
+      fornecedor: entry.fornecedor || "",
+      observacao: entry.observacao || "",
+    });
+  }
+
+  function cancelEntryEdit() {
+    setEditingEntryId("");
+    setEntryForm({
+      vaccineId: "",
+      lote: "",
+      validade: "",
+      frascos: "",
+      dosesPerBottle: "",
+      doses: "",
+      valorDose: "",
+      lowStockAlertQuantity: "",
+      fornecedor: "",
+      observacao: "",
+    });
+  }
+
+  function updateEntryForm(field, value) {
+    setEntryForm((currentForm) => {
+      const nextForm = {
+        ...currentForm,
+        [field]: value,
+      };
+
+      if (field === "vaccineId") {
+        const vaccine = vaccines.find((item) => String(item.id) === String(value));
+        nextForm.dosesPerBottle = vaccine?.dosesPerBottle || nextForm.dosesPerBottle;
+
+        if (vaccine?.valorDosePadrao && !nextForm.valorDose) {
+          nextForm.valorDose = String(vaccine.valorDosePadrao);
+        }
+      }
+
+      return nextForm;
+    });
+  }
+
+  function saveEntryEdit() {
+    if (!editingEntryId) {
+      return;
+    }
+
+    const vaccine = vaccines.find((item) => String(item.id) === String(entryForm.vaccineId));
+
+    if (!vaccine || !entryForm.lote || entryCalculatedDoses <= 0 || !entryForm.valorDose) {
+      alert("Informe vacina, lote, doses e valor por dose.");
+      return;
+    }
+
+    updateEntry(editingEntryId, {
+      vaccineId: vaccine.id,
+      vacina: vaccine.nome,
+      codigo: vaccine.codigo,
+      lote: entryForm.lote,
+      validade: entryForm.validade,
+      frascos: entryDosesPerBottle > 0 ? entryBottles : "",
+      dosesPerBottle: entryDosesPerBottle || "",
+      manualDoses: parseQuantity(entryForm.doses),
+      doses: entryCalculatedDoses,
+      valorDose: parseMoney(entryForm.valorDose),
+      valorTotal: entryTotalValue,
+      valor: entryTotalValue,
+      lowStockAlertQuantity: parseQuantity(entryForm.lowStockAlertQuantity),
+      fornecedor: entryForm.fornecedor,
+      observacao: entryForm.observacao,
+    });
+    cancelEntryEdit();
+  }
+
+  function deleteEntry(entryId) {
+    const confirmed = window.confirm("Excluir esta entrada do estoque?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    removeEntry(entryId);
   }
 
   if (!authorized) {
@@ -344,6 +556,323 @@ function Chief() {
                 </p>
               )}
             </div>
+          </div>
+        </div>
+
+        <div className="mt-8 rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
+          <h2 className="text-2xl font-bold text-zinc-900">
+            Gestao de vacinas
+          </h2>
+
+          <p className="mt-2 text-zinc-500">
+            Somente o chefe altera nome, codigo, doses por frasco, valor padrao por dose e exclusoes.
+          </p>
+
+          {editingVaccineId && (
+            <div className="mt-6 grid gap-4 rounded-3xl border border-green-100 bg-green-50 p-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-6">
+                <input
+                  type="text"
+                  placeholder="Codigo"
+                  value={vaccineForm.codigo}
+                  onChange={(event) => setVaccineForm({ ...vaccineForm, codigo: event.target.value })}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Nome"
+                  value={vaccineForm.nome}
+                  onChange={(event) => setVaccineForm({ ...vaccineForm, nome: event.target.value })}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Fabricante"
+                  value={vaccineForm.fabricante}
+                  onChange={(event) => setVaccineForm({ ...vaccineForm, fabricante: event.target.value })}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Doses por frasco"
+                  value={vaccineForm.dosesPerBottle}
+                  onChange={(event) => setVaccineForm({ ...vaccineForm, dosesPerBottle: event.target.value })}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Valor padrao por dose"
+                  value={vaccineForm.valorDosePadrao}
+                  onChange={(event) => setVaccineForm({ ...vaccineForm, valorDosePadrao: event.target.value })}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Observacoes"
+                  value={vaccineForm.observacoes}
+                  onChange={(event) => setVaccineForm({ ...vaccineForm, observacoes: event.target.value })}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={saveVaccineEdit}
+                  className="rounded-2xl bg-green-600 px-6 py-3 font-bold text-white transition hover:bg-green-700"
+                >
+                  Salvar vacina
+                </button>
+
+                <button
+                  type="button"
+                  onClick={cancelVaccineEdit}
+                  className="rounded-2xl bg-white px-6 py-3 font-bold text-green-700 ring-1 ring-green-100 transition hover:bg-green-100"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full text-left text-zinc-900">
+              <thead>
+                <tr className="border-b border-green-100 text-zinc-500">
+                  <th className="pb-4">Codigo</th>
+                  <th className="pb-4">Nome</th>
+                  <th className="pb-4">Fabricante</th>
+                  <th className="pb-4">Doses/frasco</th>
+                  <th className="pb-4">Valor padrao</th>
+                  <th className="pb-4">Acoes</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {vaccines.map((vaccine) => (
+                  <tr key={vaccine.id} className="border-b border-green-100 last:border-b-0">
+                    <td className="py-4">{vaccine.codigo}</td>
+                    <td>{vaccine.nome}</td>
+                    <td>{vaccine.fabricante || "-"}</td>
+                    <td>{vaccine.dosesPerBottle || "-"}</td>
+                    <td>{vaccine.valorDosePadrao ? formatCurrency(parseMoney(vaccine.valorDosePadrao)) : "-"}</td>
+                    <td>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startVaccineEdit(vaccine)}
+                          className="rounded-xl bg-zinc-900 px-4 py-2 font-bold text-white transition hover:bg-zinc-800"
+                        >
+                          Alterar
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteVaccine(vaccine.id)}
+                          className="rounded-xl bg-red-600 px-4 py-2 font-bold text-white transition hover:bg-red-700"
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="mt-8 rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
+          <h2 className="text-2xl font-bold text-zinc-900">
+            Gestao de entradas
+          </h2>
+
+          <p className="mt-2 text-zinc-500">
+            Ajuste valor por dose, validade, lote, fornecedor e quantidades somente por aqui.
+          </p>
+
+          {editingEntryId && (
+            <div className="mt-6 grid gap-4 rounded-3xl border border-green-100 bg-green-50 p-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-5">
+                <select
+                  value={entryForm.vaccineId}
+                  onChange={(event) => updateEntryForm("vaccineId", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                >
+                  <option value="">Selecione vacina</option>
+                  {vaccines.map((vaccine) => (
+                    <option key={vaccine.id} value={vaccine.id}>
+                      {vaccine.nome}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="text"
+                  placeholder="Lote"
+                  value={entryForm.lote}
+                  onChange={(event) => updateEntryForm("lote", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                  Data de validade
+                  <input
+                    type="date"
+                    value={entryForm.validade}
+                    onChange={(event) => updateEntryForm("validade", event.target.value)}
+                    className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                  />
+                </label>
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Frascos"
+                  value={entryForm.frascos}
+                  onChange={(event) => updateEntryForm("frascos", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Doses por frasco"
+                  value={entryForm.dosesPerBottle}
+                  onChange={(event) => updateEntryForm("dosesPerBottle", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Doses totais sem frasco"
+                  value={entryForm.doses}
+                  onChange={(event) => updateEntryForm("doses", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Valor por dose"
+                  value={entryForm.valorDose}
+                  onChange={(event) => updateEntryForm("valorDose", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Alerta estoque baixo"
+                  value={entryForm.lowStockAlertQuantity}
+                  onChange={(event) => updateEntryForm("lowStockAlertQuantity", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Fornecedor"
+                  value={entryForm.fornecedor}
+                  onChange={(event) => updateEntryForm("fornecedor", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Observacao"
+                  value={entryForm.observacao}
+                  onChange={(event) => updateEntryForm("observacao", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+              </div>
+
+              <div className="rounded-2xl bg-white p-4 ring-1 ring-green-100">
+                <p className="text-sm text-zinc-500">Total recalculado</p>
+                <p className="mt-1 text-2xl font-bold text-green-700">
+                  {entryCalculatedDoses} doses - {formatCurrency(entryTotalValue)}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={saveEntryEdit}
+                  className="rounded-2xl bg-green-600 px-6 py-3 font-bold text-white transition hover:bg-green-700"
+                >
+                  Salvar entrada
+                </button>
+
+                <button
+                  type="button"
+                  onClick={cancelEntryEdit}
+                  className="rounded-2xl bg-white px-6 py-3 font-bold text-green-700 ring-1 ring-green-100 transition hover:bg-green-100"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full text-left text-zinc-900">
+              <thead>
+                <tr className="border-b border-green-100 text-zinc-500">
+                  <th className="pb-4">Vacina</th>
+                  <th className="pb-4">Lote</th>
+                  <th className="pb-4">Doses</th>
+                  <th className="pb-4">Valor/dose</th>
+                  <th className="pb-4">Total</th>
+                  <th className="pb-4">Validade</th>
+                  <th className="pb-4">Acoes</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {recentEntries.map((entry) => (
+                  <tr key={entry.id} className="border-b border-green-100 last:border-b-0">
+                    <td className="py-4">{entry.vacina}</td>
+                    <td>{entry.lote || "-"}</td>
+                    <td>{entry.doses}</td>
+                    <td>{formatCurrency(getEntryDoseValue(entry))}</td>
+                    <td className="font-bold text-green-700">{formatCurrency(getEntryTotalValue(entry))}</td>
+                    <td>{entry.validade || "-"}</td>
+                    <td>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEntryEdit(entry)}
+                          className="rounded-xl bg-zinc-900 px-4 py-2 font-bold text-white transition hover:bg-zinc-800"
+                        >
+                          Alterar
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteEntry(entry.id)}
+                          className="rounded-xl bg-red-600 px-4 py-2 font-bold text-white transition hover:bg-red-700"
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {recentEntries.length === 0 && (
+              <p className="mt-4 rounded-2xl bg-green-50 p-5 text-zinc-500">
+                Nenhuma entrada registrada.
+              </p>
+            )}
           </div>
         </div>
 
