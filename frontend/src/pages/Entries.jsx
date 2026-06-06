@@ -59,6 +59,7 @@ function Entries() {
     vaccines,
     entries,
     addEntry,
+    calculateStock,
     getStockAlertLevel,
   } = useVaccines();
 
@@ -120,6 +121,25 @@ function Entries() {
       setValorDose(String(selectedVaccine.valorDosePadrao));
     }
   }, [selectedVaccine, valorDose]);
+
+  function selectVaccineForRestock(vacina) {
+    setVaccineId(String(vacina.id));
+    setLote("");
+    setValidade("");
+    setBottles("1");
+    setDoses(vacina.dosesPerBottle ? String(vacina.dosesPerBottle) : "");
+    setValorDose(vacina.valorDosePadrao ? String(vacina.valorDosePadrao) : "");
+    setLowStockAlertQuantity(String(getStockAlertLevel(vacina.id) || ""));
+    setFornecedor("");
+    setObservacao("");
+
+    window.setTimeout(() => {
+      document.getElementById("entrada-reposicao")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 50);
+  }
 
   function registrarEntrada() {
 
@@ -207,6 +227,83 @@ function Entries() {
         </div>
 
         <div className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-zinc-900">
+                Acrescentar vacina
+              </h2>
+
+              <p className="mt-2 text-zinc-500">
+                Selecione a vacina para repor o estoque dela.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {vaccines.map((vacina) => (
+              <div
+                key={vacina.id}
+                className="rounded-2xl border border-green-100 bg-green-50 p-5"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      {vacina.codigo || "Sem codigo"}
+                    </p>
+
+                    <h3 className="mt-1 text-xl font-bold text-zinc-900">
+                      {vacina.nome}
+                    </h3>
+                  </div>
+
+                  <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-green-700">
+                    {calculateStock(vacina.id)} doses
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-zinc-600">
+                  <p>
+                    Frasco: <strong className="text-zinc-900">{vacina.dosesPerBottle || "-"} doses</strong>
+                  </p>
+
+                  <p>
+                    Valor: <strong className="text-zinc-900">{vacina.valorDosePadrao ? formatCurrency(parseMoney(vacina.valorDosePadrao)) : "-"}</strong>
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => selectVaccineForRestock(vacina)}
+                  className="mt-5 w-full rounded-2xl bg-green-600 px-5 py-3 font-bold text-white transition hover:bg-green-700"
+                >
+                  Acrescentar vacina
+                </button>
+              </div>
+            ))}
+
+            {vaccines.length === 0 && (
+              <p className="rounded-2xl bg-green-50 p-5 text-zinc-500">
+                Cadastre uma vacina primeiro para repor estoque.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div
+          id="entrada-reposicao"
+          className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm scroll-mt-6"
+        >
+          <div className="mb-6">
+            <h2 className="text-3xl font-bold text-zinc-900">
+              Repor estoque
+            </h2>
+
+            <p className="mt-2 text-zinc-500">
+              {selectedVaccine
+                ? `Reposicao selecionada: ${selectedVaccine.nome}`
+                : "Escolha a vacina, lote, validade e valores da entrada."}
+            </p>
+          </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
 
@@ -385,7 +482,7 @@ function Entries() {
             onClick={registrarEntrada}
             className="mt-8 bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-2xl font-bold transition"
           >
-            Registrar Entrada
+            Acrescentar vacina ao estoque
           </button>
 
         </div>
