@@ -6,6 +6,7 @@ import {
 } from "../context/VaccineContext";
 import { authorizeChiefAccessApi } from "../services/vacitechApi";
 import { readJson } from "../utils/vacitechStorage";
+import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString("pt-BR", {
@@ -213,12 +214,29 @@ function Chief() {
   const recentAuditLog = vaccineAuditLog.slice(0, 6);
   const recentEntries = entries.slice(-10).reverse();
   const selectedEntryVaccine = vaccines.find((vaccine) => String(vaccine.id) === String(entryForm.vaccineId));
+  const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
   const entryDosesPerBottle = parseQuantity(entryForm.dosesPerBottle || selectedEntryVaccine?.dosesPerBottle);
   const entryBottles = Math.max(1, parseQuantity(entryForm.frascos) || 1);
   const entryCalculatedDoses = entryDosesPerBottle > 0
     ? entryDosesPerBottle * entryBottles
     : parseQuantity(entryForm.doses);
   const entryTotalValue = entryCalculatedDoses * parseMoney(entryForm.valorDose);
+
+  function getLastEntryDoseValue(vaccineIdValue) {
+    const entry = [...entries]
+      .reverse()
+      .find((item) => String(item.vaccineId) === String(vaccineIdValue) && getEntryDoseValue(item) > 0);
+
+    return entry ? getEntryDoseValue(entry) : 0;
+  }
+
+  function getVaccineDoseValue(vaccine) {
+    const defaultValue = parseMoney(vaccine?.valorDosePadrao);
+
+    return defaultValue > 0
+      ? defaultValue
+      : getLastEntryDoseValue(vaccine?.id);
+  }
 
   async function handleChiefAccess() {
     setAccessLoading(true);
@@ -257,7 +275,7 @@ function Chief() {
       nome: vaccine.nome || "",
       fabricante: vaccine.fabricante || "",
       dosesPerBottle: vaccine.dosesPerBottle || "",
-      valorDosePadrao: vaccine.valorDosePadrao || "",
+      valorDosePadrao: vaccine.valorDosePadrao || (getVaccineDoseValue(vaccine) > 0 ? String(getVaccineDoseValue(vaccine)) : ""),
       observacoes: vaccine.observacoes || "",
     });
   }
@@ -341,8 +359,10 @@ function Chief() {
         const vaccine = vaccines.find((item) => String(item.id) === String(value));
         nextForm.dosesPerBottle = vaccine?.dosesPerBottle || nextForm.dosesPerBottle;
 
-        if (vaccine?.valorDosePadrao && !nextForm.valorDose) {
-          nextForm.valorDose = String(vaccine.valorDosePadrao);
+        const doseValue = getVaccineDoseValue(vaccine);
+
+        if (doseValue > 0 && !nextForm.valorDose) {
+          nextForm.valorDose = String(doseValue);
         }
       }
 
@@ -598,7 +618,7 @@ function Chief() {
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="Doses por frasco"
+                  placeholder="Quantidade de doses"
                   value={vaccineForm.dosesPerBottle}
                   onChange={(event) => setVaccineForm({ ...vaccineForm, dosesPerBottle: event.target.value })}
                   className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
@@ -649,20 +669,20 @@ function Chief() {
                   <th className="pb-4">Codigo</th>
                   <th className="pb-4">Nome</th>
                   <th className="pb-4">Fabricante</th>
-                  <th className="pb-4">Doses/frasco</th>
+                  <th className="pb-4">Quantidade de doses</th>
                   <th className="pb-4">Valor padrao</th>
                   <th className="pb-4">Acoes</th>
                 </tr>
               </thead>
 
               <tbody>
-                {vaccines.map((vaccine) => (
+                {sortedVaccines.map((vaccine) => (
                   <tr key={vaccine.id} className="border-b border-green-100 last:border-b-0">
                     <td className="py-4">{vaccine.codigo}</td>
                     <td>{vaccine.nome}</td>
                     <td>{vaccine.fabricante || "-"}</td>
                     <td>{vaccine.dosesPerBottle || "-"}</td>
-                    <td>{vaccine.valorDosePadrao ? formatCurrency(parseMoney(vaccine.valorDosePadrao)) : "-"}</td>
+                    <td>{getVaccineDoseValue(vaccine) > 0 ? formatCurrency(getVaccineDoseValue(vaccine)) : "-"}</td>
                     <td>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -707,7 +727,7 @@ function Chief() {
                   className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
                 >
                   <option value="">Selecione vacina</option>
-                  {vaccines.map((vaccine) => (
+                  {sortedVaccines.map((vaccine) => (
                     <option key={vaccine.id} value={vaccine.id}>
                       {vaccine.nome}
                     </option>
@@ -744,7 +764,7 @@ function Chief() {
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="Doses por frasco"
+                  placeholder="Quantidade de doses"
                   value={entryForm.dosesPerBottle}
                   onChange={(event) => updateEntryForm("dosesPerBottle", event.target.value)}
                   className="rounded-2xl border border-green-100 bg-white p-4 outline-none"

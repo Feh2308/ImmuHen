@@ -619,7 +619,7 @@ app.get("/api/vacitech/notifications/status", async (req, res) => {
 });
 
 app.post("/api/vacitech/stock-access", async (req, res) => {
-  const password = String(req.body.password || "");
+  const password = String(req.body.password || "").trim();
 
   if (!isAdminAccount(req.account)) {
     return res.status(403).json({
@@ -649,7 +649,7 @@ app.post("/api/vacitech/stock-access", async (req, res) => {
 });
 
 app.post("/api/vacitech/chief-access", async (req, res) => {
-  const password = String(req.body.password || "");
+  const password = String(req.body.password || "").trim();
 
   if (!isAdminAccount(req.account)) {
     return res.status(403).json({

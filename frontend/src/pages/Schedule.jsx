@@ -19,6 +19,7 @@ import {
   updateRequestVaccinesApi,
 } from "../services/vacitechApi";
 import { useVaccines } from "../context/VaccineContext";
+import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 const WEEKDAYS = [
   { value: "0", label: "Domingo" },
@@ -337,6 +338,7 @@ function Schedule() {
   const activeVaccinators = vaccinators.filter(
     (vaccinator) => vaccinator.status !== "INATIVO"
   );
+  const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
   const ranchOptions = getProfileRanches(getFarmProfile());
   const availableRanches = ranchOptions.length
     ? ranchOptions
@@ -2196,7 +2198,7 @@ function getMapsLink(location) {
                             <option value="">
                               Selecione a vacina
                             </option>
-                            {vaccines.map((vaccine) => (
+                            {sortedVaccines.map((vaccine) => (
                               <option key={vaccine.id} value={vaccine.id}>
                                 {vaccine.nome} | estoque: {calculateStock(vaccine.id)}
                               </option>
@@ -2427,7 +2429,7 @@ function getMapsLink(location) {
                                           <option value="">
                                             Manter como evento
                                           </option>
-                                          {vaccines.map((vaccine) => (
+                                          {sortedVaccines.map((vaccine) => (
                                             <option key={vaccine.id} value={vaccine.id}>
                                               {vaccine.nome} | estoque: {calculateStock(vaccine.id)}
                                             </option>
@@ -2795,7 +2797,7 @@ function getMapsLink(location) {
                           <option value="">
                             Selecione a vacina
                           </option>
-                          {vaccines.map((vaccine) => (
+                          {sortedVaccines.map((vaccine) => (
                             <option key={vaccine.id} value={vaccine.id}>
                               {vaccine.nome} | estoque: {calculateStock(vaccine.id)}
                             </option>

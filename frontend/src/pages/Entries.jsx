@@ -5,6 +5,7 @@ import Sidebar from "../components/Sidebar";
 import {
   useVaccines,
 } from "../context/VaccineContext";
+import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 function parseMoney(value) {
   const parsed = Number(String(value || "0").replace(",", "."));
@@ -93,6 +94,23 @@ function Entries() {
   const selectedVaccine = useMemo(() => (
     vaccines.find((vaccine) => String(vaccine.id) === String(vaccineId))
   ), [vaccineId, vaccines]);
+  const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
+
+  function getLastEntryDoseValue(vaccineIdValue) {
+    const entry = [...entries]
+      .reverse()
+      .find((item) => String(item.vaccineId) === String(vaccineIdValue) && getEntryDoseValue(item) > 0);
+
+    return entry ? getEntryDoseValue(entry) : 0;
+  }
+
+  function getVaccineDoseValue(vacina) {
+    const defaultValue = parseMoney(vacina?.valorDosePadrao);
+
+    return defaultValue > 0
+      ? defaultValue
+      : getLastEntryDoseValue(vacina?.id);
+  }
 
   const dosesPerBottle = parseQuantity(selectedVaccine?.dosesPerBottle);
   const calculatedDoses = dosesPerBottle > 0
@@ -117,8 +135,10 @@ function Entries() {
       setBottles((currentBottles) => currentBottles || "1");
     }
 
-    if (selectedVaccine.valorDosePadrao && !valorDose) {
-      setValorDose(String(selectedVaccine.valorDosePadrao));
+    const doseValue = getVaccineDoseValue(selectedVaccine);
+
+    if (doseValue > 0 && !valorDose) {
+      setValorDose(String(doseValue));
     }
   }, [selectedVaccine, valorDose]);
 
@@ -128,7 +148,7 @@ function Entries() {
     setValidade("");
     setBottles("1");
     setDoses(vacina.dosesPerBottle ? String(vacina.dosesPerBottle) : "");
-    setValorDose(vacina.valorDosePadrao ? String(vacina.valorDosePadrao) : "");
+    setValorDose(getVaccineDoseValue(vacina) > 0 ? String(getVaccineDoseValue(vacina)) : "");
     setLowStockAlertQuantity(String(getStockAlertLevel(vacina.id) || ""));
     setFornecedor("");
     setObservacao("");
@@ -240,7 +260,7 @@ function Entries() {
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {vaccines.map((vacina) => (
+            {sortedVaccines.map((vacina) => (
               <div
                 key={vacina.id}
                 className="rounded-2xl border border-green-100 bg-green-50 p-5"
@@ -263,11 +283,11 @@ function Entries() {
 
                 <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-zinc-600">
                   <p>
-                    Frasco: <strong className="text-zinc-900">{vacina.dosesPerBottle || "-"} doses</strong>
+                    Quantidade: <strong className="text-zinc-900">{vacina.dosesPerBottle || "-"} doses</strong>
                   </p>
 
                   <p>
-                    Valor: <strong className="text-zinc-900">{vacina.valorDosePadrao ? formatCurrency(parseMoney(vacina.valorDosePadrao)) : "-"}</strong>
+                    Valor: <strong className="text-zinc-900">{getVaccineDoseValue(vacina) > 0 ? formatCurrency(getVaccineDoseValue(vacina)) : "-"}</strong>
                   </p>
                 </div>
 
@@ -321,7 +341,7 @@ function Entries() {
                   Selecione Vacina
                 </option>
 
-                {vaccines.map((vacina) => (
+                {sortedVaccines.map((vacina) => (
 
                   <option
                     key={vacina.id}
@@ -389,10 +409,10 @@ function Entries() {
             </label>
 
             <label className="grid gap-2 text-sm font-semibold text-zinc-700">
-              Doses dentro do frasco
+              Quantidade de doses
               <input
                 type="text"
-                placeholder="Doses por frasco"
+                placeholder="Quantidade de doses"
                 value={dosesPerBottle > 0 ? selectedVaccine?.dosesPerBottle || "" : doses}
                 onChange={(e) =>
                   setDoses(e.target.value)
@@ -512,7 +532,7 @@ function Entries() {
                 </th>
 
                 <th className="pb-4">
-                  Doses/frasco
+                  Quantidade de doses
                 </th>
 
                 <th className="pb-4">

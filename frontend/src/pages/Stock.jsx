@@ -6,6 +6,7 @@ import {
   useVaccines,
 } from "../context/VaccineContext";
 import { authorizeStockAccessApi } from "../services/vacitechApi";
+import { compareVaccinesByCode, sortVaccinesByCode } from "../utils/vaccineSort";
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString("pt-BR", {
@@ -74,6 +75,7 @@ function Stock() {
 
   const [authorized, setAuthorized] =
     useState(() => sessionStorage.getItem("stockAuthorized") === "true");
+  const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
 
   const stockRows = useMemo(() => {
     const rows = new Map();
@@ -101,7 +103,7 @@ function Stock() {
       return rows.get(key);
     }
 
-    vaccines.forEach((vaccine) => {
+    sortedVaccines.forEach((vaccine) => {
       ensureRow(vaccine.id, {
         vacina: vaccine.nome,
         codigo: vaccine.codigo,
@@ -141,8 +143,12 @@ function Stock() {
         validades: Array.from(row.validades).join(", ") || "-",
         fornecedores: Array.from(row.fornecedores).join(", ") || "-",
       }))
-      .filter((row) => row.entradas > 0 || row.saidas > 0 || vaccines.length);
-  }, [vaccines, entries, outputs]);
+      .filter((row) => row.entradas > 0 || row.saidas > 0 || vaccines.length)
+      .sort((first, second) => compareVaccinesByCode(
+        { codigo: first.codigo, nome: first.vacina },
+        { codigo: second.codigo, nome: second.vacina }
+      ));
+  }, [vaccines, sortedVaccines, entries, outputs]);
 
   const movementRows = useMemo(() => {
     const entryRows = entries.map((entry) => ({
@@ -318,12 +324,12 @@ function Stock() {
             </h1>
 
             <p className="text-zinc-500 mt-2">
-              Digite a senha administrativa para acessar o controle de estoque.
+              Digite a senha do login da conta chefe/admin desta granja para acessar o controle de estoque.
             </p>
 
             <input
               type="password"
-              placeholder="Digite a senha"
+              placeholder="Senha do login admin"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-6 w-full bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"

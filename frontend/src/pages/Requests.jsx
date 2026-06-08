@@ -14,6 +14,7 @@ import {
   fetchSharedStateApi,
 } from "../services/vacitechApi";
 import { useVaccines } from "../context/VaccineContext";
+import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 function parseQuantity(value) {
   const parsed = Number(String(value || "0").replace(",", "."));
@@ -198,6 +199,7 @@ function Requests() {
   const [doseConfirmationForms, setDoseConfirmationForms] = useState({});
   const [completionForms, setCompletionForms] = useState({});
   const captureUrl = `${window.location.origin}/temperatura-vacina`;
+  const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
 
   async function loadRequests() {
     try {
@@ -1025,7 +1027,7 @@ function Requests() {
                                   <option value="">
                                     Selecione a vacina
                                   </option>
-                                  {vaccines.map((vaccine) => (
+                                  {sortedVaccines.map((vaccine) => (
                                     <option key={vaccine.id} value={vaccine.id}>
                                       {vaccine.nome} | estoque: {calculateStock(vaccine.id)}
                                     </option>

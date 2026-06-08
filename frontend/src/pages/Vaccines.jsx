@@ -5,6 +5,7 @@ import Sidebar from "../components/Sidebar";
 import {
   useVaccines,
 } from "../context/VaccineContext";
+import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 function Vaccines() {
 
@@ -27,6 +28,7 @@ function Vaccines() {
 
   const [observacoes, setObservacoes] =
     useState("");
+  const sortedVaccines = sortVaccinesByCode(vaccines);
 
   function cadastrarVacina() {
 
@@ -35,7 +37,7 @@ function Vaccines() {
       !nome ||
       !dosesPerBottle
     ) {
-      alert("Preencha codigo, nome e doses dentro do frasco");
+      alert("Preencha codigo, nome e quantidade de doses");
       return;
     }
 
@@ -111,7 +113,7 @@ function Vaccines() {
             <input
               type="text"
               inputMode="decimal"
-              placeholder="Doses dentro do frasco"
+              placeholder="Quantidade de doses"
               value={dosesPerBottle}
               onChange={(e) =>
                 setDosesPerBottle(e.target.value)
@@ -161,7 +163,7 @@ function Vaccines() {
                 </th>
 
                 <th className="pb-4">
-                  Doses/frasco
+                  Quantidade de doses
                 </th>
 
                 <th className="pb-4">
@@ -174,7 +176,7 @@ function Vaccines() {
 
             <tbody>
 
-              {vaccines.map((vacina) => (
+              {sortedVaccines.map((vacina) => (
 
                 <tr
                   key={vacina.id}
