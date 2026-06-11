@@ -132,8 +132,27 @@ function calculateRequiredCc(birdsVaccinated, dosePerBirdCc) {
   return Number((birds * dose).toFixed(2));
 }
 
+function calculateRequiredFlasks(flaskCc, birdsVaccinated, dosePerBirdCc) {
+  const flask = parseQuantity(flaskCc);
+  const requiredCc = calculateRequiredCc(birdsVaccinated, dosePerBirdCc);
+
+  if (flask <= 0 || requiredCc <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(requiredCc / flask);
+}
+
 function getUsageRequiredCc(usage) {
   return parseQuantity(usage.requiredCc ?? usage.totalCc) || calculateRequiredCc(
+    getUsageBirdsVaccinated(usage),
+    getUsageDosePerBirdCc(usage)
+  );
+}
+
+function getUsageRequiredFlasks(usage) {
+  return parseQuantity(usage.requiredFlasks ?? usage.totalFrascos) || calculateRequiredFlasks(
+    getUsageFlaskCc(usage),
     getUsageBirdsVaccinated(usage),
     getUsageDosePerBirdCc(usage)
   );
@@ -152,6 +171,7 @@ function getUsageMetrics(usage) {
   const birdsPerFlask = calculateBirdsPerFlask(flaskCc, dosePerBirdCc);
   const birdsVaccinated = String(getUsageBirdsVaccinated(usage) || "").trim();
   const requiredCc = getUsageRequiredCc(usage);
+  const requiredFlasks = getUsageRequiredFlasks(usage);
 
   return {
     flaskCc,
@@ -159,6 +179,7 @@ function getUsageMetrics(usage) {
     birdsVaccinated,
     birdsPerFlask,
     requiredCc,
+    requiredFlasks,
     flasks: flaskCc,
   };
 }
@@ -179,8 +200,8 @@ function formatUsageMetrics(usage) {
     parts.push(`${formatQuantity(metrics.birdsVaccinated)} aves vacinadas`);
   }
 
-  if (metrics.requiredCc > 0) {
-    parts.push(`${formatQuantity(metrics.requiredCc)} cc necessarios`);
+  if (metrics.requiredFlasks > 0) {
+    parts.push(`${formatQuantity(metrics.requiredFlasks)} frasco(s) necessarios`);
   }
 
   if (metrics.birdsPerFlask > 0) {
@@ -867,6 +888,10 @@ function Schedule() {
     return getFormSimulationRows().reduce((total, row) => total + Number(row.totalDoses || row.doses || 0), 0);
   }
 
+  function getFormTotalFlasks() {
+    return getFormSimulationRows().reduce((total, row) => total + Number(row.requiredFlasks || getUsageRequiredFlasks(row) || 0), 0);
+  }
+
   function getFormLaborCost() {
     return getFormSimulationRows().reduce((total, row) => total + Number(row.laborCost || 0), 0);
   }
@@ -877,6 +902,10 @@ function Schedule() {
 
   function getScheduleTotalDoses(schedule) {
     return (schedule.vaccineUsages || []).reduce((total, usage) => total + Number(usage.doses || 0), 0);
+  }
+
+  function getScheduleTotalFlasks(schedule) {
+    return (schedule.vaccineUsages || []).reduce((total, usage) => total + Number(usage.requiredFlasks || getUsageRequiredFlasks(usage) || 0), 0);
   }
 
   function getScheduleVaccineCost(schedule) {
@@ -946,6 +975,7 @@ function getMapsLink(location) {
           dosePerBirdCc: usage.dosePerBirdCc || getUsageDosePerBirdCc(usage),
           birdsVaccinated: usage.birdsVaccinated || getUsageBirdsVaccinated(usage),
           requiredCc: usage.requiredCc || getUsageRequiredCc(usage),
+          requiredFlasks: usage.requiredFlasks || getUsageRequiredFlasks(usage),
           birdsPerFlask: usage.birdsPerFlask || getUsageBirdsPerFlask(usage),
           flasks: usage.flaskCc || getUsageFlaskCc(usage),
           birdLotId: schedule.birdLotId || "",
@@ -2323,9 +2353,9 @@ function getMapsLink(location) {
                         </label>
 
                         <div className="grid min-w-0 gap-2 text-sm font-semibold text-zinc-700">
-                          <span>Total cc</span>
+                          <span>Frascos necessarios</span>
                           <span className="flex min-h-[48px] items-center rounded-xl border border-green-100 bg-green-50 px-4 py-3 font-bold text-green-700">
-                            {formatQuantity(getUsageRequiredCc(usage))}
+                            {formatQuantity(getUsageRequiredFlasks(usage))}
                           </span>
                         </div>
 
@@ -2393,7 +2423,7 @@ function getMapsLink(location) {
                         Simulacao
                       </p>
                       <p className="mt-1 text-sm font-semibold text-zinc-600">
-                        Total cc: {formatQuantity(getFormTotalDoses())}
+                        Frascos: {formatQuantity(getFormTotalFlasks())}
                       </p>
                       <p className="mt-1 text-sm font-semibold text-zinc-600">
                         Vacinas: {formatCurrency(getFormVaccineCost())}
@@ -2561,9 +2591,9 @@ function getMapsLink(location) {
                                       </label>
 
                                       <div className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
-                                        Total cc
+                                        Frascos necessarios
                                         <span className="min-h-[48px] rounded-xl bg-white px-3 py-3 font-bold text-green-700">
-                                          {formatQuantity(getUsageRequiredCc(usage))}
+                                          {formatQuantity(getUsageRequiredFlasks(usage))}
                                         </span>
                                       </div>
 
@@ -2795,10 +2825,10 @@ function getMapsLink(location) {
 
                   <div className="rounded-xl border border-green-100 bg-green-50 p-4">
                     <p className="text-sm font-bold uppercase tracking-wide text-green-700">
-                      Total cc
+                      Frascos necessarios
                     </p>
                     <p className="mt-2 text-lg font-bold text-zinc-900">
-                      {formatQuantity(getScheduleTotalDoses(schedule))}
+                      {formatQuantity(getScheduleTotalFlasks(schedule))}
                     </p>
                   </div>
 
@@ -2846,7 +2876,7 @@ function getMapsLink(location) {
                       const flaskCc = getUsageFlaskCc(usage);
                       const dosePerBirdCc = getUsageDosePerBirdCc(usage);
                       const birdsVaccinated = getUsageBirdsVaccinated(usage);
-                      const requiredCc = getUsageRequiredCc(usage);
+                      const requiredFlasks = getUsageRequiredFlasks(usage);
                       const birdsPerFlask = getUsageBirdsPerFlask(usage);
 
                       return (
@@ -2882,8 +2912,8 @@ function getMapsLink(location) {
                               {birdsVaccinated ? formatQuantity(birdsVaccinated) : "-"}
                             </p>
                             <p className="rounded-xl bg-green-50 p-3">
-                              <span className="block font-bold text-green-700">Total cc</span>
-                              {requiredCc > 0 ? formatQuantity(requiredCc) : "-"}
+                              <span className="block font-bold text-green-700">Frascos necessarios</span>
+                              {requiredFlasks > 0 ? formatQuantity(requiredFlasks) : "-"}
                             </p>
                             <p className="rounded-xl bg-green-50 p-3">
                               <span className="block font-bold text-green-700">Aves/frasco</span>
@@ -2993,7 +3023,7 @@ function getMapsLink(location) {
                         />
 
                         <span className="min-h-[48px] rounded-xl bg-white px-3 py-3 font-bold text-green-700 ring-1 ring-green-100">
-                          {formatQuantity(getUsageRequiredCc(usage))} cc
+                          {formatQuantity(getUsageRequiredFlasks(usage))} frasco(s)
                         </span>
 
                         <span className="min-h-[48px] rounded-xl bg-white px-3 py-3 font-bold text-green-700 ring-1 ring-green-100">

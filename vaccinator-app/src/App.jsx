@@ -198,12 +198,24 @@ function calculateRequiredCc(birdsVaccinated, dosePerBirdCc) {
   return Number((birds * dose).toFixed(2));
 }
 
+function calculateRequiredFlasks(flaskCc, birdsVaccinated, dosePerBirdCc) {
+  const flask = parseQuantity(flaskCc);
+  const requiredCc = calculateRequiredCc(birdsVaccinated, dosePerBirdCc);
+
+  if (flask <= 0 || requiredCc <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(requiredCc / flask);
+}
+
 function getUsageBirdsVaccinated(item) {
   return item?.birdsVaccinated ?? item?.avesVacinadas ?? "";
 }
 
-function getUsageRequiredCc(item) {
-  return parseQuantity(item?.requiredCc ?? item?.totalCc) || calculateRequiredCc(
+function getUsageRequiredFlasks(item) {
+  return parseQuantity(item?.requiredFlasks ?? item?.totalFrascos) || calculateRequiredFlasks(
+    item?.flaskCc || item?.flasks || item?.frascos,
     getUsageBirdsVaccinated(item),
     item?.dosePerBirdCc
   );
@@ -213,7 +225,7 @@ function getUsageTechnicalText(item) {
   const flaskCc = String(item.flaskCc || item.flasks || item.frascos || "").trim();
   const dosePerBirdCc = String(item.dosePerBirdCc || "").trim();
   const birdsVaccinated = String(getUsageBirdsVaccinated(item) || "").trim();
-  const requiredCc = getUsageRequiredCc(item);
+  const requiredFlasks = getUsageRequiredFlasks(item);
   const birdsPerFlask = Number(item.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
   const parts = [];
 
@@ -229,8 +241,8 @@ function getUsageTechnicalText(item) {
     parts.push(`${formatQuantity(birdsVaccinated)} aves vacinadas`);
   }
 
-  if (requiredCc > 0) {
-    parts.push(`${formatQuantity(requiredCc)} cc necessarios`);
+  if (requiredFlasks > 0) {
+    parts.push(`${formatQuantity(requiredFlasks)} frasco(s) necessarios`);
   }
 
   if (birdsPerFlask > 0) {
@@ -1162,8 +1174,8 @@ function App() {
                     <strong>{request.applicationMethod || request.vaccineUsages?.[0]?.applicationMethod || "-"}</strong>
                   </div>
                   <div>
-                    <span>Total cc</span>
-                    <strong>{formatQuantity(getRequestTotalDoses(request))}</strong>
+                    <span>Frascos necessarios</span>
+                    <strong>{formatQuantity((request.vaccineUsages || []).reduce((total, usage) => total + Number(usage.requiredFlasks || getUsageRequiredFlasks(usage) || 0), 0))}</strong>
                   </div>
                   <div>
                     <span>Mao de obra</span>
@@ -1179,7 +1191,7 @@ function App() {
                         const flaskCc = String(usage.flaskCc || usage.flasks || usage.frascos || "").trim();
                         const dosePerBirdCc = String(usage.dosePerBirdCc || "").trim();
                         const birdsVaccinated = String(getUsageBirdsVaccinated(usage) || "").trim();
-                        const requiredCc = getUsageRequiredCc(usage);
+                        const requiredFlasks = getUsageRequiredFlasks(usage);
                         const birdsPerFlask = Number(usage.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
 
                         return (
@@ -1196,7 +1208,7 @@ function App() {
                               <p><strong>Frasco</strong>{flaskCc ? `${flaskCc} cc` : "-"}</p>
                               <p><strong>Dose/ave</strong>{dosePerBirdCc ? `${dosePerBirdCc} cc` : "-"}</p>
                               <p><strong>Aves vacinadas</strong>{birdsVaccinated ? formatQuantity(birdsVaccinated) : "-"}</p>
-                              <p><strong>Total cc</strong>{requiredCc > 0 ? formatQuantity(requiredCc) : "-"}</p>
+                              <p><strong>Frascos necessarios</strong>{requiredFlasks > 0 ? formatQuantity(requiredFlasks) : "-"}</p>
                               <p><strong>Aves/frasco</strong>{birdsPerFlask > 0 ? formatQuantity(birdsPerFlask) : "-"}</p>
                               <p><strong>Via</strong>{usage.applicationMethod || "-"}</p>
                             </div>

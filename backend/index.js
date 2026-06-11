@@ -2841,6 +2841,7 @@ function normalizeVaccineUsages(value) {
       const dosePerBirdCc = String(item.dosePerBirdCc || item.ccPerBird || "").trim();
       const birdsVaccinated = String(item.birdsVaccinated || item.avesVacinadas || "").trim();
       const requiredCc = Number(item.requiredCc || item.totalCc || calculateRequiredCc(birdsVaccinated, dosePerBirdCc) || 0);
+      const requiredFlasks = Number(item.requiredFlasks || item.totalFrascos || calculateRequiredFlasks(flaskCc, birdsVaccinated, dosePerBirdCc) || 0);
       const birdsPerFlask = Number(item.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
 
       return {
@@ -2854,6 +2855,7 @@ function normalizeVaccineUsages(value) {
         dosePerBirdCc,
         birdsVaccinated,
         requiredCc,
+        requiredFlasks,
         birdsPerFlask,
         flasks: flaskCc,
         laborCost: parseDecimalValue(item.laborCost ?? item.maoDeObra ?? 0),
@@ -2889,6 +2891,17 @@ function calculateRequiredCc(birdsVaccinated, dosePerBirdCc) {
   }
 
   return Number((birds * dose).toFixed(2));
+}
+
+function calculateRequiredFlasks(flaskCc, birdsVaccinated, dosePerBirdCc) {
+  const flask = parseDecimalValue(flaskCc);
+  const requiredCc = calculateRequiredCc(birdsVaccinated, dosePerBirdCc);
+
+  if (flask <= 0 || requiredCc <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(requiredCc / flask);
 }
 
 function formatQuantity(value) {
@@ -2939,6 +2952,7 @@ function getUsageTechnicalText(item) {
   const dosePerBirdCc = String(item.dosePerBirdCc || "").trim();
   const birdsVaccinated = String(item.birdsVaccinated || item.avesVacinadas || "").trim();
   const requiredCc = Number(item.requiredCc || item.totalCc || calculateRequiredCc(birdsVaccinated, dosePerBirdCc) || 0);
+  const requiredFlasks = Number(item.requiredFlasks || item.totalFrascos || calculateRequiredFlasks(flaskCc, birdsVaccinated, dosePerBirdCc) || 0);
   const birdsPerFlask = Number(item.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
   const parts = [];
 
@@ -2954,8 +2968,8 @@ function getUsageTechnicalText(item) {
     parts.push(`${formatQuantity(birdsVaccinated)} aves vacinadas`);
   }
 
-  if (requiredCc > 0) {
-    parts.push(`${formatQuantity(requiredCc)} cc necessarios`);
+  if (requiredFlasks > 0) {
+    parts.push(`${formatQuantity(requiredFlasks)} frasco(s) necessarios`);
   }
 
   if (birdsPerFlask > 0) {
@@ -3007,12 +3021,14 @@ function buildVaccinationMaterials(request = {}) {
     const dosePerBirdCc = String(item.dosePerBirdCc || "").trim();
     const birdsVaccinated = String(item.birdsVaccinated || item.avesVacinadas || "").trim();
     const requiredCc = Number(item.requiredCc || item.totalCc || calculateRequiredCc(birdsVaccinated, dosePerBirdCc) || 0);
+    const requiredFlasks = Number(item.requiredFlasks || item.totalFrascos || calculateRequiredFlasks(flaskCc, birdsVaccinated, dosePerBirdCc) || 0);
     const birdsPerFlask = Number(item.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
     const technicalText = getUsageTechnicalText({
       flaskCc,
       dosePerBirdCc,
       birdsVaccinated,
       requiredCc,
+      requiredFlasks,
       birdsPerFlask,
     });
 
