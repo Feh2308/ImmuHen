@@ -82,6 +82,9 @@ export function VaccineProvider({
   const [vaccineEditRequests, setVaccineEditRequests] =
     useState(() => getStoredItems("vaccineEditRequests"));
 
+  const [entryEditRequests, setEntryEditRequests] =
+    useState(() => getStoredItems("entryEditRequests"));
+
   const [vaccineAuditLog, setVaccineAuditLog] =
     useState(() => getStoredItems("vaccineAuditLog"));
 
@@ -125,6 +128,10 @@ export function VaccineProvider({
           setVaccineEditRequests(state.vaccineEditRequests);
         }
 
+        if (Array.isArray(state.entryEditRequests) && (state.entryEditRequests.length > 0 || getStoredItems("entryEditRequests").length === 0)) {
+          setEntryEditRequests(state.entryEditRequests);
+        }
+
         if (Array.isArray(state.vaccineAuditLog) && (state.vaccineAuditLog.length > 0 || getStoredItems("vaccineAuditLog").length === 0)) {
           setVaccineAuditLog(state.vaccineAuditLog);
         }
@@ -146,6 +153,7 @@ export function VaccineProvider({
       setOutputs(getStoredItems("outputs"));
       setStockAlertLevels(getStoredObject("stockAlertLevels"));
       setVaccineEditRequests(getStoredItems("vaccineEditRequests"));
+      setEntryEditRequests(getStoredItems("entryEditRequests"));
       setVaccineAuditLog(getStoredItems("vaccineAuditLog"));
     }
 
@@ -217,6 +225,14 @@ export function VaccineProvider({
 
   useEffect(() => {
     writeJson(
+      "entryEditRequests",
+      entryEditRequests,
+      { silent: true }
+    );
+  }, [entryEditRequests, tenantId]);
+
+  useEffect(() => {
+    writeJson(
       "vaccineAuditLog",
       vaccineAuditLog,
       { silent: true }
@@ -235,6 +251,7 @@ export function VaccineProvider({
         outputs,
         stockAlertLevels,
         vaccineEditRequests,
+        entryEditRequests,
         vaccineAuditLog,
       }).catch((error) => {
         console.log(error);
@@ -246,6 +263,7 @@ export function VaccineProvider({
     };
   }, [
     entries,
+    entryEditRequests,
     outputs,
     stockAlertLevels,
     tenantId,
@@ -532,6 +550,142 @@ export function VaccineProvider({
     }
   }
 
+  function requestEntryValueEdit({ entryId, valorDose, reason, requestedBy }) {
+    const entry = entries.find((item) => String(item.id) === String(entryId));
+
+    if (!entry) {
+      throw new Error("Entrada nao encontrada.");
+    }
+
+    const cleanReason = String(reason || "").trim();
+    const nextValue = parseQuantity(valorDose);
+    const entryDoses = Number(entry.doses || 0);
+    const currentValue = Number(entry.valorDose || (
+      entryDoses > 0
+        ? Number(entry.valorTotal ?? entry.valor ?? 0) / entryDoses
+        : 0
+    ));
+
+    if (!cleanReason) {
+      throw new Error("Informe a justificativa da edicao.");
+    }
+
+    if (nextValue <= 0) {
+      throw new Error("Informe um valor por dose maior que zero.");
+    }
+
+    if (Number(nextValue.toFixed(6)) === Number(currentValue.toFixed(6))) {
+      throw new Error("Informe um valor diferente do atual.");
+    }
+
+    const request = {
+      id: `entry-value-edit-${Date.now()}`,
+      entryId,
+      vaccineId: entry.vaccineId || "",
+      vaccineName: entry.vacina || getVaccineName(entry.vaccineId),
+      lote: entry.lote || "",
+      before: {
+        valorDose: currentValue,
+        valorTotal: Number(entry.valorTotal || entry.valor || (entryDoses * currentValue)),
+      },
+      after: {
+        valorDose: nextValue,
+        valorTotal: entryDoses * nextValue,
+      },
+      doses: entryDoses,
+      reason: cleanReason,
+      requestedBy: requestedBy || "Funcionario",
+      requestedAt: new Date().toLocaleString("pt-BR"),
+      status: "pending",
+    };
+
+    setEntryEditRequests((currentRequests) => [
+      request,
+      ...currentRequests,
+    ]);
+
+    return request;
+  }
+
+  function approveEntryValueEdit(requestId, approvedBy = "Administrador") {
+    const request = entryEditRequests.find((item) => String(item.id) === String(requestId));
+
+    if (!request || request.status !== "pending") {
+      return;
+    }
+
+    updateEntry(request.entryId, {
+      valorDose: Number(request.after?.valorDose || 0),
+      valorTotal: Number(request.after?.valorTotal || 0),
+      valor: Number(request.after?.valorTotal || 0),
+    });
+
+    const approvedAt = new Date().toLocaleString("pt-BR");
+
+    setEntryEditRequests((currentRequests) =>
+      currentRequests.map((item) => (
+        String(item.id) === String(requestId)
+          ? {
+              ...item,
+              status: "approved",
+              approvedBy,
+              approvedAt,
+            }
+          : item
+      ))
+    );
+
+    setVaccineAuditLog((currentLog) => [
+      {
+        id: `audit-entry-${Date.now()}`,
+        type: "entry-value-edit-approved",
+        entryId: request.entryId,
+        vaccineId: request.vaccineId,
+        vaccineName: request.vaccineName,
+        reason: request.reason,
+        requestedBy: request.requestedBy,
+        approvedBy,
+        createdAt: approvedAt,
+      },
+      ...currentLog,
+    ]);
+  }
+
+  function rejectEntryValueEdit(requestId, rejectedBy = "Administrador") {
+    const rejectedAt = new Date().toLocaleString("pt-BR");
+    const request = entryEditRequests.find((item) => String(item.id) === String(requestId));
+
+    setEntryEditRequests((currentRequests) =>
+      currentRequests.map((item) => (
+        String(item.id) === String(requestId)
+          ? {
+              ...item,
+              status: "rejected",
+              rejectedBy,
+              rejectedAt,
+            }
+          : item
+      ))
+    );
+
+    if (request) {
+      setVaccineAuditLog((currentLog) => [
+        {
+          id: `audit-entry-${Date.now()}`,
+          type: "entry-value-edit-rejected",
+          entryId: request.entryId,
+          vaccineId: request.vaccineId,
+          vaccineName: request.vaccineName,
+          reason: request.reason,
+          requestedBy: request.requestedBy,
+          rejectedBy,
+          createdAt: rejectedAt,
+        },
+        ...currentLog,
+      ]);
+    }
+  }
+
   function addEntry(entry) {
     const threshold = parseQuantity(entry.lowStockAlertQuantity);
 
@@ -618,6 +772,7 @@ export function VaccineProvider({
         entries,
         outputs,
         vaccineEditRequests,
+        entryEditRequests,
         vaccineAuditLog,
 
         addVaccine,
@@ -626,6 +781,9 @@ export function VaccineProvider({
         requestVaccineEdit,
         approveVaccineEdit,
         rejectVaccineEdit,
+        requestEntryValueEdit,
+        approveEntryValueEdit,
+        rejectEntryValueEdit,
 
         addEntry,
         updateEntry,

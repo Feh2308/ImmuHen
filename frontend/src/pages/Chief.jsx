@@ -85,6 +85,7 @@ function Chief() {
     outputs,
     stockAlertLevels,
     vaccineEditRequests,
+    entryEditRequests,
     vaccineAuditLog,
     updateVaccine,
     removeVaccine,
@@ -92,6 +93,8 @@ function Chief() {
     removeEntry,
     approveVaccineEdit,
     rejectVaccineEdit,
+    approveEntryValueEdit,
+    rejectEntryValueEdit,
   } = useVaccines();
 
   const [authorized, setAuthorized] =
@@ -161,7 +164,9 @@ function Chief() {
     const totalEntries = entries.reduce((total, entry) => total + Number(entry.doses || 0), 0);
     const totalOutputs = outputs.reduce((total, output) => total + Number(output.doses || 0), 0);
     const totalValue = entries.reduce((total, entry) => total + getEntryTotalValue(entry), 0);
-    const pendingEdits = vaccineEditRequests.filter((request) => request.status === "pending").length;
+    const pendingEdits =
+      vaccineEditRequests.filter((request) => request.status === "pending").length +
+      entryEditRequests.filter((request) => request.status === "pending").length;
     const pendingRequests = requests.filter((request) => {
       const status = getRequestStatus(request.status);
 
@@ -177,7 +182,7 @@ function Chief() {
       pendingRequests,
       completed: completedVaccinations.length,
     };
-  }, [completedVaccinations.length, entries, outputs, requests, vaccineEditRequests]);
+  }, [completedVaccinations.length, entries, entryEditRequests, outputs, requests, vaccineEditRequests]);
 
   const stockRows = useMemo(() => {
     return vaccines.map((vaccine) => {
@@ -226,6 +231,7 @@ function Chief() {
 
   const maxChartDoses = Math.max(...usageChartRows.map((row) => row.doses), 1);
   const pendingEditRequests = vaccineEditRequests.filter((request) => request.status === "pending");
+  const pendingEntryEditRequests = entryEditRequests.filter((request) => request.status === "pending");
   const recentAuditLog = vaccineAuditLog.slice(0, 6);
   const recentEntries = entries.slice(-10).reverse();
   const selectedEntryVaccine = vaccines.find((vaccine) => String(vaccine.id) === String(entryForm.vaccineId));
@@ -310,6 +316,14 @@ function Chief() {
 
   function rejectRequest(requestId) {
     rejectVaccineEdit(requestId, getCurrentUserLabel());
+  }
+
+  function approveEntryRequest(requestId) {
+    approveEntryValueEdit(requestId, getCurrentUserLabel());
+  }
+
+  function rejectEntryRequest(requestId) {
+    rejectEntryValueEdit(requestId, getCurrentUserLabel());
   }
 
   function startVaccineEdit(vaccine) {
@@ -1053,6 +1067,88 @@ function Chief() {
 
         <div className="mt-8 rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
           <h2 className="text-2xl font-bold text-zinc-900">
+            Aprovacao de edicoes de entrada
+          </h2>
+
+          <p className="mt-2 text-zinc-500">
+            Confirme alteracoes de valor por dose solicitadas na tela de Entradas.
+          </p>
+
+          <div className="mt-6 space-y-4">
+            {pendingEntryEditRequests.map((request) => (
+              <div
+                key={request.id}
+                className="rounded-3xl border border-yellow-100 bg-yellow-50 p-5"
+              >
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-zinc-900">
+                      {request.vaccineName}
+                    </h3>
+
+                    <p className="mt-1 text-sm text-zinc-600">
+                      Lote {request.lote || "-"} | Solicitado por {request.requestedBy} em {request.requestedAt}
+                    </p>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                      <div className="rounded-2xl bg-white p-4 ring-1 ring-yellow-100">
+                        <p className="text-sm font-bold text-zinc-500">Valor atual</p>
+                        <p className="mt-1 text-xl font-bold text-zinc-900">
+                          {formatCurrency(request.before?.valorDose)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-white p-4 ring-1 ring-yellow-100">
+                        <p className="text-sm font-bold text-zinc-500">Novo valor</p>
+                        <p className="mt-1 text-xl font-bold text-green-700">
+                          {formatCurrency(request.after?.valorDose)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-white p-4 ring-1 ring-yellow-100">
+                        <p className="text-sm font-bold text-zinc-500">Novo total</p>
+                        <p className="mt-1 text-xl font-bold text-green-700">
+                          {formatCurrency(request.after?.valorTotal)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="mt-4 font-semibold text-yellow-800">
+                      {request.reason}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => approveEntryRequest(request.id)}
+                      className="rounded-2xl bg-green-600 px-5 py-3 font-bold text-white transition hover:bg-green-700"
+                    >
+                      Aprovar
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => rejectEntryRequest(request.id)}
+                      className="rounded-2xl bg-red-600 px-5 py-3 font-bold text-white transition hover:bg-red-700"
+                    >
+                      Recusar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {pendingEntryEditRequests.length === 0 && (
+              <p className="rounded-2xl bg-green-50 p-5 text-zinc-500">
+                Nenhuma edicao de entrada pendente.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-8 rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
+          <h2 className="text-2xl font-bold text-zinc-900">
             Historico recente
           </h2>
 
@@ -1072,7 +1168,12 @@ function Chief() {
                   <tr key={item.id} className="border-b border-green-100 last:border-b-0">
                     <td className="py-4">{item.createdAt}</td>
                     <td>{item.vaccineName}</td>
-                    <td>{item.type === "vaccine-edit-approved" ? "Edicao aprovada" : "Edicao recusada"}</td>
+                    <td>
+                      {item.type === "vaccine-edit-approved" && "Edicao de vacina aprovada"}
+                      {item.type === "vaccine-edit-rejected" && "Edicao de vacina recusada"}
+                      {item.type === "entry-value-edit-approved" && "Valor de entrada aprovado"}
+                      {item.type === "entry-value-edit-rejected" && "Valor de entrada recusado"}
+                    </td>
                     <td>{item.approvedBy || item.rejectedBy || "-"}</td>
                   </tr>
                 ))}

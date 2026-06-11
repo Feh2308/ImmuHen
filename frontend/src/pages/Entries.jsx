@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import Sidebar from "../components/Sidebar";
 
@@ -54,12 +54,24 @@ function getEntryTotalValue(entry) {
   return Number(entry.doses || 0) * getEntryDoseValue(entry);
 }
 
+function getCurrentUserLabel() {
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+    return user.name || user.email || "Funcionario";
+  } catch (error) {
+    return "Funcionario";
+  }
+}
+
 function Entries() {
 
   const {
     vaccines,
     entries,
+    entryEditRequests,
     addEntry,
+    requestEntryValueEdit,
     calculateStock,
     getStockAlertLevel,
   } = useVaccines();
@@ -89,6 +101,18 @@ function Entries() {
     useState("");
 
   const [observacao, setObservacao] =
+    useState("");
+
+  const [editingValueEntryId, setEditingValueEntryId] =
+    useState("");
+
+  const [entryValueDraft, setEntryValueDraft] =
+    useState("");
+
+  const [entryValueReason, setEntryValueReason] =
+    useState("");
+
+  const [entryValueMessage, setEntryValueMessage] =
     useState("");
 
   const selectedVaccine = useMemo(() => (
@@ -159,6 +183,43 @@ function Entries() {
         block: "start",
       });
     }, 50);
+  }
+
+  function getPendingEntryValueRequest(entryId) {
+    return entryEditRequests.find((request) => (
+      String(request.entryId) === String(entryId) &&
+      request.status === "pending"
+    ));
+  }
+
+  function startEntryValueEdit(entry) {
+    setEditingValueEntryId(entry.id);
+    setEntryValueDraft(String(getEntryDoseValue(entry) || ""));
+    setEntryValueReason("");
+    setEntryValueMessage("");
+  }
+
+  function cancelEntryValueEdit() {
+    setEditingValueEntryId("");
+    setEntryValueDraft("");
+    setEntryValueReason("");
+  }
+
+  function submitEntryValueEdit(entry) {
+    setEntryValueMessage("");
+
+    try {
+      requestEntryValueEdit({
+        entryId: entry.id,
+        valorDose: entryValueDraft,
+        reason: entryValueReason,
+        requestedBy: getCurrentUserLabel(),
+      });
+      setEntryValueMessage("Solicitacao enviada para o Administrador aprovar.");
+      cancelEntryValueEdit();
+    } catch (error) {
+      setEntryValueMessage(error.message || "Nao foi possivel solicitar a alteracao.");
+    }
   }
 
   function registrarEntrada() {
@@ -325,16 +386,16 @@ function Entries() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700">
               Vacina
               <select
                 value={vaccineId}
                 onChange={(e) =>
                   setVaccineId(e.target.value)
                 }
-                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none"
               >
 
                 <option value="">
@@ -355,7 +416,7 @@ function Entries() {
               </select>
             </label>
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700">
               Lote da vacina
               <input
                 type="text"
@@ -364,11 +425,11 @@ function Entries() {
                 onChange={(e) =>
                   setLote(e.target.value)
                 }
-                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none"
               />
             </label>
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700">
               Data de validade
               <input
                 type="date"
@@ -376,11 +437,11 @@ function Entries() {
                 onChange={(e) =>
                   setValidade(e.target.value)
                 }
-                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none"
               />
             </label>
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700">
               Valor por dose
               <input
                 type="text"
@@ -389,12 +450,12 @@ function Entries() {
                 onChange={(e) =>
                   setValorDose(e.target.value)
                 }
-                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none"
                 inputMode="decimal"
               />
             </label>
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700">
               Frascos recebidos
               <input
                 type="text"
@@ -403,12 +464,12 @@ function Entries() {
                 onChange={(e) =>
                   setBottles(e.target.value)
                 }
-                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none"
                 inputMode="decimal"
               />
             </label>
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700">
               Quantidade de doses
               <input
                 type="text"
@@ -418,12 +479,12 @@ function Entries() {
                   setDoses(e.target.value)
                 }
                 readOnly={dosesPerBottle > 0}
-                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none read-only:text-zinc-500"
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none read-only:text-zinc-500"
                 inputMode="numeric"
               />
             </label>
 
-            <div className="rounded-2xl border border-green-100 bg-green-50 p-4">
+            <div className="grid place-items-center rounded-2xl border border-green-100 bg-green-50 p-5 text-center">
               <p className="text-sm font-semibold text-zinc-600">
                 Doses totais calculadas
               </p>
@@ -432,7 +493,7 @@ function Entries() {
               </p>
             </div>
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700">
               Avisar estoque baixo em doses
               <input
                 type="text"
@@ -441,12 +502,12 @@ function Entries() {
                 onChange={(e) =>
                   setLowStockAlertQuantity(e.target.value)
                 }
-                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none"
                 inputMode="numeric"
               />
             </label>
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700">
               Fornecedor
               <input
                 type="text"
@@ -455,11 +516,11 @@ function Entries() {
                 onChange={(e) =>
                   setFornecedor(e.target.value)
                 }
-                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none"
               />
             </label>
 
-            <label className="grid gap-2 text-sm font-semibold text-zinc-700 md:col-span-3">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700 md:col-span-2 xl:col-span-3">
               Observacao
               <input
                 type="text"
@@ -468,7 +529,7 @@ function Entries() {
                 onChange={(e) =>
                   setObservacao(e.target.value)
                 }
-                className="bg-green-50 border border-green-100 rounded-2xl p-4 outline-none"
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none"
               />
             </label>
 
@@ -507,125 +568,173 @@ function Entries() {
 
         </div>
 
-        <div className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm overflow-x-auto">
+        <div className="mt-8 rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-zinc-900">
+                Entradas registradas
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Para alterar valor por dose, envie uma solicitacao para o Administrador aprovar.
+              </p>
+            </div>
 
-          <table className="w-full text-left text-zinc-900">
+            {entryValueMessage && (
+              <p className="rounded-2xl border border-green-100 bg-green-50 px-5 py-3 text-sm font-bold text-green-700">
+                {entryValueMessage}
+              </p>
+            )}
+          </div>
 
-            <thead>
-
-              <tr className="border-b border-green-100 text-zinc-500">
-
-                <th className="pb-4">
-                  Vacina
-                </th>
-
-                <th className="pb-4">
-                  Lote
-                </th>
-
-                <th className="pb-4">
-                  Doses
-                </th>
-
-                <th className="pb-4">
-                  Frascos
-                </th>
-
-                <th className="pb-4">
-                  Quantidade de doses
-                </th>
-
-                <th className="pb-4">
-                  Valor por dose
-                </th>
-
-                <th className="pb-4">
-                  Alerta baixo
-                </th>
-
-                <th className="pb-4">
-                  Total
-                </th>
-
-                <th className="pb-4">
-                  Validade
-                </th>
-
-                <th className="pb-4">
-                  Fornecedor
-                </th>
-
-                <th className="pb-4">
-                  Observacao
-                </th>
-
-              </tr>
-
-            </thead>
-
-            <tbody>
-
-              {entries.map((entry) => (
-
-                <tr
-                  key={entry.id}
-                  className="border-b border-green-100 last:border-b-0"
-                >
-
-                  <td className="py-4">
-                    {entry.vacina}
-                  </td>
-
-                  <td>
-                    {entry.lote}
-                  </td>
-
-                  <td>
-                    {entry.doses}
-                  </td>
-
-                  <td>
-                    {entry.frascos || "-"}
-                  </td>
-
-                  <td>
-                    {entry.dosesPerBottle || "-"}
-                  </td>
-
-                  <td>
-                    {formatCurrency(getEntryDoseValue(entry))}
-                  </td>
-
-                  <td>
-                    {entry.lowStockAlertQuantity
-                      ? `${entry.lowStockAlertQuantity} doses`
-                      : "-"}
-                  </td>
-
-                  <td className="font-bold text-green-600">
-                    {formatCurrency(getEntryTotalValue(entry))}
-                  </td>
-
-                  <td>
-                    {entry.validade}
-                  </td>
-
-                  <td>
-                    {entry.fornecedor}
-                  </td>
-
-                  <td className="min-w-64 max-w-xs whitespace-normal break-words text-zinc-500">
-                    {entry.observacao || "-"}
-                  </td>
-
+          <div className="mt-6 overflow-x-auto">
+            <table className="min-w-[1320px] w-full border-separate border-spacing-y-3 text-center text-zinc-900">
+              <thead>
+                <tr className="text-sm text-zinc-500">
+                  <th className="px-4 pb-2">Vacina</th>
+                  <th className="px-4 pb-2">Lote</th>
+                  <th className="px-4 pb-2">Doses</th>
+                  <th className="px-4 pb-2">Frascos</th>
+                  <th className="px-4 pb-2">Quantidade</th>
+                  <th className="px-4 pb-2">Valor por dose</th>
+                  <th className="px-4 pb-2">Alerta baixo</th>
+                  <th className="px-4 pb-2">Total</th>
+                  <th className="px-4 pb-2">Validade</th>
+                  <th className="px-4 pb-2">Fornecedor</th>
+                  <th className="px-4 pb-2">Observacao</th>
+                  <th className="px-4 pb-2">Acao</th>
                 </tr>
+              </thead>
 
-              ))}
+              <tbody>
+                {entries.map((entry) => {
+                  const pendingRequest = getPendingEntryValueRequest(entry.id);
+                  const editingThisEntry = String(editingValueEntryId) === String(entry.id);
 
-            </tbody>
+                  return (
+                    <Fragment key={entry.id}>
+                      <tr className="rounded-2xl bg-green-50 align-middle shadow-sm ring-1 ring-green-100">
+                        <td className="rounded-l-2xl px-4 py-5 font-bold text-zinc-900">
+                          {entry.vacina}
+                        </td>
 
-          </table>
+                        <td className="px-4 py-5">
+                          {entry.lote || "-"}
+                        </td>
 
+                        <td className="px-4 py-5">
+                          {entry.doses}
+                        </td>
+
+                        <td className="px-4 py-5">
+                          {entry.frascos || "-"}
+                        </td>
+
+                        <td className="px-4 py-5">
+                          {entry.dosesPerBottle || "-"}
+                        </td>
+
+                        <td className="px-4 py-5 font-bold text-green-700">
+                          {formatCurrency(getEntryDoseValue(entry))}
+                        </td>
+
+                        <td className="px-4 py-5">
+                          {entry.lowStockAlertQuantity
+                            ? `${entry.lowStockAlertQuantity} doses`
+                            : "-"}
+                        </td>
+
+                        <td className="px-4 py-5 font-bold text-green-700">
+                          {formatCurrency(getEntryTotalValue(entry))}
+                        </td>
+
+                        <td className="px-4 py-5">
+                          {entry.validade || "-"}
+                        </td>
+
+                        <td className="px-4 py-5">
+                          {entry.fornecedor || "-"}
+                        </td>
+
+                        <td className="max-w-xs whitespace-normal break-words px-4 py-5 text-zinc-500">
+                          {entry.observacao || "-"}
+                        </td>
+
+                        <td className="rounded-r-2xl px-4 py-5">
+                          {pendingRequest ? (
+                            <span className="inline-flex rounded-full bg-yellow-100 px-4 py-2 text-xs font-bold text-yellow-800">
+                              Pendente
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startEntryValueEdit(entry)}
+                              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-zinc-800"
+                            >
+                              Editar valor
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+
+                      {editingThisEntry && (
+                        <tr>
+                          <td colSpan={12} className="rounded-2xl border border-green-100 bg-white p-5 text-left shadow-sm">
+                            <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)_auto] md:items-end">
+                              <label className="grid gap-2 text-sm font-bold text-zinc-700">
+                                Novo valor por dose
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={entryValueDraft}
+                                  onChange={(event) => setEntryValueDraft(event.target.value)}
+                                  className="rounded-2xl border border-green-100 bg-green-50 p-4 text-center outline-none"
+                                />
+                              </label>
+
+                              <label className="grid gap-2 text-sm font-bold text-zinc-700">
+                                Justificativa obrigatoria
+                                <input
+                                  type="text"
+                                  value={entryValueReason}
+                                  onChange={(event) => setEntryValueReason(event.target.value)}
+                                  placeholder="Ex.: valor informado incorretamente na nota fiscal"
+                                  className="rounded-2xl border border-green-100 bg-green-50 p-4 outline-none"
+                                />
+                              </label>
+
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => submitEntryValueEdit(entry)}
+                                  className="rounded-2xl bg-green-600 px-5 py-4 font-bold text-white transition hover:bg-green-700"
+                                >
+                                  Enviar
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={cancelEntryValueEdit}
+                                  className="rounded-2xl bg-white px-5 py-4 font-bold text-green-700 ring-1 ring-green-100 transition hover:bg-green-50"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {entries.length === 0 && (
+              <p className="mt-4 rounded-2xl bg-green-50 p-5 text-center text-zinc-500">
+                Nenhuma entrada registrada.
+              </p>
+            )}
+          </div>
         </div>
 
       </div>

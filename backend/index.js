@@ -723,6 +723,9 @@ app.put("/api/vacitech/inventory-state", async (req, res) => {
   tenantData.vaccineEditRequests = Array.isArray(req.body.vaccineEditRequests)
     ? req.body.vaccineEditRequests
     : tenantData.vaccineEditRequests;
+  tenantData.entryEditRequests = Array.isArray(req.body.entryEditRequests)
+    ? req.body.entryEditRequests
+    : tenantData.entryEditRequests;
   tenantData.vaccineAuditLog = Array.isArray(req.body.vaccineAuditLog)
     ? req.body.vaccineAuditLog
     : tenantData.vaccineAuditLog;
@@ -2208,6 +2211,7 @@ function getEmptyTenantData() {
     outputs: [],
     stockAlertLevels: {},
     vaccineEditRequests: [],
+    entryEditRequests: [],
     vaccineAuditLog: [],
     vaccinators: [],
     schedules: [],
@@ -2362,6 +2366,7 @@ function migrateVacitechData(data = {}) {
           ? data.stockAlertLevels
           : {},
         vaccineEditRequests: Array.isArray(data.vaccineEditRequests) ? data.vaccineEditRequests : [],
+        entryEditRequests: Array.isArray(data.entryEditRequests) ? data.entryEditRequests : [],
         vaccineAuditLog: Array.isArray(data.vaccineAuditLog) ? data.vaccineAuditLog : [],
         vaccinators: Array.isArray(data.vaccinators) ? data.vaccinators : [],
         schedules: Array.isArray(data.schedules) ? data.schedules : [],
@@ -2406,6 +2411,9 @@ function getTenantData(data, tenantId) {
       : {},
     vaccineEditRequests: Array.isArray(data.tenants?.[tenantId]?.vaccineEditRequests)
       ? data.tenants[tenantId].vaccineEditRequests
+      : [],
+    entryEditRequests: Array.isArray(data.tenants?.[tenantId]?.entryEditRequests)
+      ? data.tenants[tenantId].entryEditRequests
       : [],
     vaccineAuditLog: Array.isArray(data.tenants?.[tenantId]?.vaccineAuditLog)
       ? data.tenants[tenantId].vaccineAuditLog
