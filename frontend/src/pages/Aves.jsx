@@ -218,7 +218,7 @@ function Aves() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
       <Sidebar />
 
       <div className="flex-1 p-8">

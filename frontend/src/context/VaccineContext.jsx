@@ -457,7 +457,7 @@ export function VaccineProvider({
     return request;
   }
 
-  function approveVaccineEdit(requestId, approvedBy = "Chefe") {
+  function approveVaccineEdit(requestId, approvedBy = "Administrador") {
     const request = vaccineEditRequests.find((item) => String(item.id) === String(requestId));
 
     if (!request || request.status !== "pending") {
@@ -497,7 +497,7 @@ export function VaccineProvider({
     ]);
   }
 
-  function rejectVaccineEdit(requestId, rejectedBy = "Chefe") {
+  function rejectVaccineEdit(requestId, rejectedBy = "Administrador") {
     const rejectedAt = new Date().toLocaleString("pt-BR");
     const request = vaccineEditRequests.find((item) => String(item.id) === String(requestId));
 

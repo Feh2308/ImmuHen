@@ -106,6 +106,10 @@ function getUsageDosePerBirdCc(usage) {
   return usage.dosePerBirdCc ?? usage.ccPerBird ?? "";
 }
 
+function getUsageBirdsVaccinated(usage) {
+  return usage.birdsVaccinated ?? usage.avesVacinadas ?? "";
+}
+
 function calculateBirdsPerFlask(flaskCc, dosePerBirdCc) {
   const flask = parseQuantity(flaskCc);
   const dose = parseQuantity(dosePerBirdCc);
@@ -115,6 +119,24 @@ function calculateBirdsPerFlask(flaskCc, dosePerBirdCc) {
   }
 
   return Math.floor(flask / dose);
+}
+
+function calculateRequiredCc(birdsVaccinated, dosePerBirdCc) {
+  const birds = parseQuantity(birdsVaccinated);
+  const dose = parseQuantity(dosePerBirdCc);
+
+  if (birds <= 0 || dose <= 0) {
+    return 0;
+  }
+
+  return Number((birds * dose).toFixed(2));
+}
+
+function getUsageRequiredCc(usage) {
+  return parseQuantity(usage.requiredCc ?? usage.totalCc) || calculateRequiredCc(
+    getUsageBirdsVaccinated(usage),
+    getUsageDosePerBirdCc(usage)
+  );
 }
 
 function getUsageBirdsPerFlask(usage) {
@@ -128,11 +150,15 @@ function getUsageMetrics(usage) {
   const flaskCc = String(getUsageFlaskCc(usage) || "").trim();
   const dosePerBirdCc = String(getUsageDosePerBirdCc(usage) || "").trim();
   const birdsPerFlask = calculateBirdsPerFlask(flaskCc, dosePerBirdCc);
+  const birdsVaccinated = String(getUsageBirdsVaccinated(usage) || "").trim();
+  const requiredCc = getUsageRequiredCc(usage);
 
   return {
     flaskCc,
     dosePerBirdCc,
+    birdsVaccinated,
     birdsPerFlask,
+    requiredCc,
     flasks: flaskCc,
   };
 }
@@ -147,6 +173,14 @@ function formatUsageMetrics(usage) {
 
   if (metrics.dosePerBirdCc) {
     parts.push(`${metrics.dosePerBirdCc} cc/ave`);
+  }
+
+  if (metrics.birdsVaccinated) {
+    parts.push(`${formatQuantity(metrics.birdsVaccinated)} aves vacinadas`);
+  }
+
+  if (metrics.requiredCc > 0) {
+    parts.push(`${formatQuantity(metrics.requiredCc)} cc necessarios`);
   }
 
   if (metrics.birdsPerFlask > 0) {
@@ -279,6 +313,7 @@ function createProgramUsage(rowId, defaultMethod = "Ocular") {
     doses: "",
     flaskCc: "",
     dosePerBirdCc: "",
+    birdsVaccinated: "",
     laborCost: "",
     applicationMethod: defaultMethod,
   };
@@ -314,7 +349,7 @@ function Schedule() {
   const [notifications, setNotifications] = useState(() => readJson("vaccinatorNotifications", []));
   const [showForm, setShowForm] = useState(false);
   const [vaccineUsages, setVaccineUsages] = useState([
-    { id: "uso-1", vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" },
+    { id: "uso-1", vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", birdsVaccinated: "", laborCost: "", applicationMethod: "Ocular" },
   ]);
   const [programRows, setProgramRows] = useState(() => createProgramRows(""));
   const [editingScheduleId, setEditingScheduleId] = useState(null);
@@ -380,6 +415,24 @@ function Schedule() {
         schedules: group.schedules.sort(sortVaccinationRecords),
       }))
       .sort((first, second) => String(first.startDate || "").localeCompare(String(second.startDate || "")));
+  }, [activeSchedules]);
+  const scheduleCalendarDays = useMemo(() => {
+    const groups = new Map();
+
+    activeSchedules.forEach((schedule) => {
+      const date = schedule.vaccinationStartDate || schedule.date || "sem-data";
+      const current = groups.get(date) || {
+        date,
+        label: date === "sem-data" ? "Sem data" : formatDate(date),
+        schedules: [],
+      };
+
+      current.schedules.push(schedule);
+      groups.set(date, current);
+    });
+
+    return Array.from(groups.values())
+      .sort((first, second) => String(first.date).localeCompare(String(second.date)));
   }, [activeSchedules]);
   const overdueNotifications = notifications
     .filter((notification) => notification.type === "OVERDUE_VACCINATION")
@@ -566,7 +619,7 @@ function Schedule() {
       observations: "",
     });
     setVaccineUsages([
-      { id: `uso-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" },
+      { id: `uso-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", birdsVaccinated: "", laborCost: "", applicationMethod: "Ocular" },
     ]);
     setProgramRows(createProgramRows(""));
   }
@@ -582,14 +635,14 @@ function Schedule() {
   function addVaccineUsage() {
     setVaccineUsages((currentUsages) => [
       ...currentUsages,
-      { id: `uso-${Date.now()}-${currentUsages.length}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" },
+      { id: `uso-${Date.now()}-${currentUsages.length}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", birdsVaccinated: "", laborCost: "", applicationMethod: "Ocular" },
     ]);
   }
 
   function removeVaccineUsage(id) {
     setVaccineUsages((currentUsages) => (
       currentUsages.length === 1
-        ? [{ id: `uso-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" }]
+        ? [{ id: `uso-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", birdsVaccinated: "", laborCost: "", applicationMethod: "Ocular" }]
         : currentUsages.filter((usage) => usage.id !== id)
     ));
   }
@@ -681,12 +734,13 @@ function Schedule() {
         usage.vaccineId ||
         usage.doses ||
         getUsageFlaskCc(usage) ||
-        getUsageDosePerBirdCc(usage)
+        getUsageDosePerBirdCc(usage) ||
+        getUsageBirdsVaccinated(usage)
       ))
       .map((usage) => {
         const vaccine = getVaccine(usage.vaccineId);
         const metrics = getUsageMetrics(usage);
-        const calculatedDoses = metrics.birdsPerFlask;
+        const calculatedDoses = metrics.requiredCc || metrics.birdsPerFlask;
 
         return {
           id: usage.id,
@@ -890,6 +944,8 @@ function getMapsLink(location) {
           applicationMethod: usage.applicationMethod || schedule.applicationMethod || "",
           flaskCc: usage.flaskCc || getUsageFlaskCc(usage),
           dosePerBirdCc: usage.dosePerBirdCc || getUsageDosePerBirdCc(usage),
+          birdsVaccinated: usage.birdsVaccinated || getUsageBirdsVaccinated(usage),
+          requiredCc: usage.requiredCc || getUsageRequiredCc(usage),
           birdsPerFlask: usage.birdsPerFlask || getUsageBirdsPerFlask(usage),
           flasks: usage.flaskCc || getUsageFlaskCc(usage),
           birdLotId: schedule.birdLotId || "",
@@ -1228,7 +1284,7 @@ function getMapsLink(location) {
   function startVaccineEdit(schedule) {
     const usages = Array.isArray(schedule.vaccineUsages) && schedule.vaccineUsages.length > 0
       ? schedule.vaccineUsages
-      : [{ id: `edit-${schedule.id}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", applicationMethod: schedule.applicationMethod || "Ocular" }];
+      : [{ id: `edit-${schedule.id}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", birdsVaccinated: "", applicationMethod: schedule.applicationMethod || "Ocular" }];
 
     setEditingScheduleId(schedule.id);
     setEditingUsages(usages.map((usage, index) => ({
@@ -1237,6 +1293,7 @@ function getMapsLink(location) {
       doses: usage.doses || "",
       flaskCc: getUsageFlaskCc(usage),
       dosePerBirdCc: getUsageDosePerBirdCc(usage),
+      birdsVaccinated: getUsageBirdsVaccinated(usage),
       laborCost: getUsageLaborCost(usage),
       applicationMethod: usage.applicationMethod || schedule.applicationMethod || "Ocular",
     })));
@@ -1256,7 +1313,7 @@ function getMapsLink(location) {
         ? currentUsages
         : [
             ...currentUsages,
-            { id: `edit-${Date.now()}-${currentUsages.length}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" },
+            { id: `edit-${Date.now()}-${currentUsages.length}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", birdsVaccinated: "", laborCost: "", applicationMethod: "Ocular" },
           ]
     ));
   }
@@ -1264,7 +1321,7 @@ function getMapsLink(location) {
   function removeEditingUsage(id) {
     setEditingUsages((currentUsages) => (
       currentUsages.length === 1
-        ? [{ id: `edit-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", laborCost: "", applicationMethod: "Ocular" }]
+        ? [{ id: `edit-${Date.now()}`, vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", birdsVaccinated: "", laborCost: "", applicationMethod: "Ocular" }]
         : currentUsages.filter((usage) => usage.id !== id)
     ));
   }
@@ -1275,12 +1332,13 @@ function getMapsLink(location) {
         usage.vaccineId ||
         usage.doses ||
         getUsageFlaskCc(usage) ||
-        getUsageDosePerBirdCc(usage)
+        getUsageDosePerBirdCc(usage) ||
+        getUsageBirdsVaccinated(usage)
       ))
       .map((usage) => {
         const vaccine = getVaccine(usage.vaccineId);
         const metrics = getUsageMetrics(usage);
-        const calculatedDoses = metrics.birdsPerFlask;
+        const calculatedDoses = metrics.requiredCc || metrics.birdsPerFlask;
 
         return {
           id: usage.id,
@@ -1647,7 +1705,7 @@ function getMapsLink(location) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-br from-green-50 to-white md:flex-row">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
       <Sidebar />
 
       <main className="min-w-0 flex-1 p-4 md:p-8">
@@ -2215,9 +2273,9 @@ function getMapsLink(location) {
                         </button>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7 xl:items-end">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-9 xl:items-end">
                         <label className="grid min-w-0 gap-2 text-sm font-semibold text-zinc-700">
-                          Doses
+                          Doses/cc manual
                           <input
                             type="text"
                             inputMode="numeric"
@@ -2251,6 +2309,25 @@ function getMapsLink(location) {
                             className="min-w-0 w-full rounded-xl border border-green-100 bg-green-50 p-3 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
                           />
                         </label>
+
+                        <label className="grid min-w-0 gap-2 text-sm font-semibold text-zinc-700">
+                          Aves vacinadas
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={getUsageBirdsVaccinated(usage)}
+                            onChange={(event) => updateVaccineUsage(usage.id, "birdsVaccinated", event.target.value)}
+                            placeholder="10000"
+                            className="min-w-0 w-full rounded-xl border border-green-100 bg-green-50 p-3 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
+                          />
+                        </label>
+
+                        <div className="grid min-w-0 gap-2 text-sm font-semibold text-zinc-700">
+                          <span>Total cc</span>
+                          <span className="flex min-h-[48px] items-center rounded-xl border border-green-100 bg-green-50 px-4 py-3 font-bold text-green-700">
+                            {formatQuantity(getUsageRequiredCc(usage))}
+                          </span>
+                        </div>
 
                         <div className="grid min-w-0 gap-2 text-sm font-semibold text-zinc-700">
                           <span>Aves/frasco</span>
@@ -2316,7 +2393,7 @@ function getMapsLink(location) {
                         Simulacao
                       </p>
                       <p className="mt-1 text-sm font-semibold text-zinc-600">
-                        Doses: {formatQuantity(getFormTotalDoses())}
+                        Total cc: {formatQuantity(getFormTotalDoses())}
                       </p>
                       <p className="mt-1 text-sm font-semibold text-zinc-600">
                         Vacinas: {formatCurrency(getFormVaccineCost())}
@@ -2446,7 +2523,7 @@ function getMapsLink(location) {
                                       </button>
                                     </div>
 
-                                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6 xl:items-end">
+                                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-8 xl:items-end">
                                       <label className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
                                         CC/frasco
                                         <input
@@ -2470,6 +2547,25 @@ function getMapsLink(location) {
                                           className="min-w-0 rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
                                         />
                                       </label>
+
+                                      <label className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
+                                        Aves vacinadas
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          value={getUsageBirdsVaccinated(usage)}
+                                          onChange={(event) => updateProgramUsage(row.id, usage.id, "birdsVaccinated", event.target.value)}
+                                          placeholder="10000"
+                                          className="min-w-0 rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                                        />
+                                      </label>
+
+                                      <div className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
+                                        Total cc
+                                        <span className="min-h-[48px] rounded-xl bg-white px-3 py-3 font-bold text-green-700">
+                                          {formatQuantity(getUsageRequiredCc(usage))}
+                                        </span>
+                                      </div>
 
                                       <div className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
                                         Aves/frasco
@@ -2508,8 +2604,8 @@ function getMapsLink(location) {
                                       <div className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
                                         Custo
                                         <span className="min-h-[48px] rounded-xl bg-white px-3 py-3 font-bold text-green-700">
-                                          {usage.vaccineId && (parseQuantity(usage.doses) || getUsageBirdsPerFlask(usage))
-                                            ? formatCurrency((getAverageDoseCost(usage.vaccineId) * (parseQuantity(usage.doses) || getUsageBirdsPerFlask(usage))) + getUsageLaborCost(usage))
+                                          {usage.vaccineId && (parseQuantity(usage.doses) || getUsageRequiredCc(usage) || getUsageBirdsPerFlask(usage))
+                                            ? formatCurrency((getAverageDoseCost(usage.vaccineId) * (parseQuantity(usage.doses) || getUsageRequiredCc(usage) || getUsageBirdsPerFlask(usage))) + getUsageLaborCost(usage))
                                             : "-"}
                                         </span>
                                       </div>
@@ -2557,6 +2653,51 @@ function getMapsLink(location) {
               >
                 Cancelar
               </button>
+            </div>
+          </section>
+        )}
+
+        {scheduleCalendarDays.length > 0 && (
+          <section className="mt-6 rounded-3xl border border-green-100 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                  Calendario do programa
+                </p>
+                <h2 className="mt-1 text-2xl font-bold text-zinc-900">
+                  Vacinas separadas por dia
+                </h2>
+              </div>
+              <span className="w-fit rounded-full bg-green-50 px-4 py-2 text-sm font-bold text-green-700">
+                {activeSchedules.length} evento(s)
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {scheduleCalendarDays.map((day) => (
+                <article key={day.date} className="rounded-2xl border border-green-100 bg-green-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <strong className="text-green-800">{day.label}</strong>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-green-700">
+                      {day.schedules.length}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    {day.schedules.map((schedule) => (
+                      <div key={`cal-${schedule.id}`} className="rounded-xl bg-white p-3 text-sm">
+                        <p className="font-bold text-zinc-900">
+                          {schedule.programDay ? `Dia ${schedule.programDay}` : "Vacina"}
+                          {schedule.birdLotName ? ` | ${schedule.birdLotName}` : ""}
+                        </p>
+                        <p className="mt-1 text-zinc-500">
+                          {getScheduleVaccinatorName(schedule)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              ))}
             </div>
           </section>
         )}
@@ -2654,7 +2795,7 @@ function getMapsLink(location) {
 
                   <div className="rounded-xl border border-green-100 bg-green-50 p-4">
                     <p className="text-sm font-bold uppercase tracking-wide text-green-700">
-                      Doses usadas
+                      Total cc
                     </p>
                     <p className="mt-2 text-lg font-bold text-zinc-900">
                       {formatQuantity(getScheduleTotalDoses(schedule))}
@@ -2704,6 +2845,8 @@ function getMapsLink(location) {
                       const fabricante = usage.fabricante || vaccine?.fabricante || "-";
                       const flaskCc = getUsageFlaskCc(usage);
                       const dosePerBirdCc = getUsageDosePerBirdCc(usage);
+                      const birdsVaccinated = getUsageBirdsVaccinated(usage);
+                      const requiredCc = getUsageRequiredCc(usage);
                       const birdsPerFlask = getUsageBirdsPerFlask(usage);
 
                       return (
@@ -2721,7 +2864,7 @@ function getMapsLink(location) {
                               </p>
                             </div>
                             <span className="rounded-full bg-green-50 px-3 py-1 text-sm font-bold text-green-700">
-                              {formatQuantity(usage.doses)} doses
+                              {formatQuantity(usage.doses)} cc
                             </span>
                           </div>
 
@@ -2733,6 +2876,14 @@ function getMapsLink(location) {
                             <p className="rounded-xl bg-green-50 p-3">
                               <span className="block font-bold text-green-700">Dose/ave</span>
                               {dosePerBirdCc ? `${dosePerBirdCc} cc` : "-"}
+                            </p>
+                            <p className="rounded-xl bg-green-50 p-3">
+                              <span className="block font-bold text-green-700">Aves vacinadas</span>
+                              {birdsVaccinated ? formatQuantity(birdsVaccinated) : "-"}
+                            </p>
+                            <p className="rounded-xl bg-green-50 p-3">
+                              <span className="block font-bold text-green-700">Total cc</span>
+                              {requiredCc > 0 ? formatQuantity(requiredCc) : "-"}
                             </p>
                             <p className="rounded-xl bg-green-50 p-3">
                               <span className="block font-bold text-green-700">Aves/frasco</span>
@@ -2813,7 +2964,7 @@ function getMapsLink(location) {
                         </button>
                       </div>
 
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6 xl:items-end">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7 xl:items-end">
                         <input
                           type="text"
                           inputMode="decimal"
@@ -2831,6 +2982,19 @@ function getMapsLink(location) {
                           placeholder="CC/ave"
                           className="min-w-0 rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
                         />
+
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={getUsageBirdsVaccinated(usage)}
+                          onChange={(event) => updateEditingUsage(usage.id, "birdsVaccinated", event.target.value)}
+                          placeholder="Aves vacinadas"
+                          className="min-w-0 rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                        />
+
+                        <span className="min-h-[48px] rounded-xl bg-white px-3 py-3 font-bold text-green-700 ring-1 ring-green-100">
+                          {formatQuantity(getUsageRequiredCc(usage))} cc
+                        </span>
 
                         <span className="min-h-[48px] rounded-xl bg-white px-3 py-3 font-bold text-green-700 ring-1 ring-green-100">
                           {formatQuantity(getUsageBirdsPerFlask(usage))} aves/frasco

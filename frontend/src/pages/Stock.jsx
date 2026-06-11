@@ -311,7 +311,7 @@ function Stock() {
 
   if (!authorized) {
     return (
-      <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-white">
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
 
         <Sidebar />
 
@@ -324,7 +324,7 @@ function Stock() {
             </h1>
 
             <p className="text-zinc-500 mt-2">
-              Digite a senha do login da conta chefe/admin desta granja para acessar o controle de estoque.
+              Digite a senha do administrador desta granja para acessar o controle de estoque.
             </p>
 
             <input
@@ -358,7 +358,7 @@ function Stock() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
 
       <Sidebar />
 

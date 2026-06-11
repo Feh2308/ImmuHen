@@ -236,6 +236,13 @@ export async function authorizeChiefAccessApi(password) {
   });
 }
 
+export async function updateAdminAccessPasswordApi(password) {
+  return apiRequest("/api/vacitech/admin-access-password", {
+    method: "PUT",
+    body: JSON.stringify({ password }),
+  });
+}
+
 export async function fetchBirdLotsApi() {
   return apiRequest("/birdlots");
 }

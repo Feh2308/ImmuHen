@@ -228,7 +228,7 @@ function Entries() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
 
       <Sidebar />
 

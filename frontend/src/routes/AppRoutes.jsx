@@ -49,6 +49,7 @@ export default function AppRoutes() {
         <Route path="/perfil" element={<FarmProfile />} />
 
         <Route path="/chefe" element={<Chief />} />
+        <Route path="/administrador" element={<Chief />} />
 
         <Route path="/Aves" element={<Aves />} />
 

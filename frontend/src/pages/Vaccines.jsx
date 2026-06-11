@@ -58,7 +58,7 @@ function Vaccines() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
 
       <Sidebar />
 
@@ -71,7 +71,7 @@ function Vaccines() {
           </h1>
 
           <p className="text-zinc-500 mt-2">
-            Cadastro base de vacinas. Alteracoes, valores e exclusoes ficam no ambiente do chefe.
+            Cadastro base de vacinas. Alteracoes, valores e exclusoes ficam no ambiente do administrador.
           </p>
 
         </div>

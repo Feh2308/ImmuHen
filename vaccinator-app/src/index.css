@@ -255,6 +255,67 @@ textarea:focus {
   gap: 16px;
 }
 
+.agenda-board {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.agenda-day {
+  background: #f8fffb;
+  border: 1px solid #bbf7d0;
+  border-radius: 18px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.agenda-date {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.agenda-date strong {
+  color: #14532d;
+  font-size: 1rem;
+}
+
+.agenda-date span,
+.agenda-event em {
+  background: #dcfce7;
+  border-radius: 999px;
+  color: #15803d;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 900;
+  padding: 6px 9px;
+}
+
+.agenda-events {
+  display: grid;
+  gap: 8px;
+}
+
+.agenda-event {
+  background: #ffffff;
+  border: 1px solid #dcfce7;
+  border-radius: 14px;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.agenda-event strong {
+  color: #18181b;
+}
+
+.agenda-event span {
+  color: #52525b;
+  font-size: 0.9rem;
+}
+
 .summary-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-top: 18px;

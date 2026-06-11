@@ -5,6 +5,18 @@ import { getFarmProfile } from "../utils/vacitechStorage";
 function Sidebar() {
   const location = useLocation();
   const [farmProfile, setFarmProfile] = useState(getFarmProfile);
+  const links = [
+    { to: "/home", label: "Home" },
+    { to: "/Aves", label: "Aves" },
+    { to: "/vacinas", label: "Vacinas" },
+    { to: "/entradas", label: "Entradas" },
+    { to: "/estoque", label: "Estoque" },
+    { to: "/administrador", label: "Administrador" },
+    { to: "/agenda", label: "Programa" },
+    { to: "/vaccinators", label: "Vacinadores" },
+    { to: "/solicitacoes", label: "Solicitacoes" },
+    { to: "/perfil", label: "Perfil da Granja" },
+  ];
 
   useEffect(() => {
     function refreshProfile() {
@@ -22,94 +34,50 @@ function Sidebar() {
 
   function linkClass(path) {
     return `
-      p-3 rounded-2xl transition font-medium
+      shrink-0 rounded-xl px-3 py-2 text-sm font-bold transition
       ${
         location.pathname === path
           ? "bg-green-600 text-white"
-          : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
+          : "text-zinc-600 hover:bg-green-50 hover:text-green-700"
       }
     `;
   }
 
   return (
-    <div className="w-72 bg-zinc-950 border-r border-zinc-800 min-h-screen p-6 flex flex-col">
-      <div>
-        <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-40 border-b border-green-100 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           {farmProfile.logoDataUrl && (
             <img
               src={farmProfile.logoDataUrl}
               alt={`Logo ${farmProfile.farmName || "da granja"}`}
-              className="h-14 w-14 rounded-2xl border border-green-700 bg-white object-contain p-1"
+              className="h-12 w-12 rounded-xl border border-green-100 bg-white object-contain p-1"
             />
           )}
 
-          <h1 className="text-3xl font-bold text-white">
+          <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-zinc-900">
             Immu
             <span className="text-green-500">
               Hen
             </span>
           </h1>
-        </div>
 
-        <p className="mt-2 text-sm text-zinc-500">
-          Gestao sanitaria avicola
-        </p>
-      </div>
-
-      <nav className="flex flex-col gap-3 mt-10">
-        <Link to="/home" className={linkClass("/home")}>
-          Home
-        </Link>
-
-        <Link to="/Aves" className={linkClass("/Aves")}>
-          Aves
-        </Link>
-
-        <Link to="/vacinas" className={linkClass("/vacinas")}>
-          Vacinas
-        </Link>
-
-        <Link to="/entradas" className={linkClass("/entradas")}>
-          Entradas
-        </Link>
-
-        <Link to="/estoque" className={linkClass("/estoque")}>
-          Estoque
-        </Link>
-
-        <Link to="/chefe" className={linkClass("/chefe")}>
-          Chefe
-        </Link>
-
-        <Link to="/agenda" className={linkClass("/agenda")}>
-          Programa
-        </Link>
-
-        <Link to="/vaccinators" className={linkClass("/vaccinators")}>
-          Vacinadores
-        </Link>
-
-        <Link to="/solicitacoes" className={linkClass("/solicitacoes")}>
-          Solicitacoes
-        </Link>
-
-        <Link to="/perfil" className={linkClass("/perfil")}>
-          Perfil da Granja
-        </Link>
-      </nav>
-
-      <div className="mt-auto pt-8">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-          <p className="text-zinc-400 text-sm">
-            Sistema operacional sanitario avicola
-          </p>
-
-          <p className="text-green-500 font-bold mt-2">
-            Online
+          <p className="truncate text-xs font-semibold text-zinc-500">
+            {farmProfile.farmName || "Gestao sanitaria avicola"}
           </p>
         </div>
       </div>
-    </div>
+
+        <nav className="flex gap-2 overflow-x-auto pb-1 xl:pb-0">
+          {links.map((link) => (
+            <Link key={link.to} to={link.to} className={linkClass(link.to)}>
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
+    </header>
   );
 }
 

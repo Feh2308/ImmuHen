@@ -623,7 +623,7 @@ app.post("/api/vacitech/stock-access", async (req, res) => {
 
   if (!isAdminAccount(req.account)) {
     return res.status(403).json({
-      message: "Apenas chefe/admin pode acessar o estoque.",
+      message: "Apenas administrador pode acessar o estoque.",
     });
   }
 
@@ -633,7 +633,7 @@ app.post("/api/vacitech/stock-access", async (req, res) => {
     });
   }
 
-  const validAccountPassword = verifyPassword(password, req.account.passwordHash);
+  const validAccountPassword = verifyAdminAccessPassword(password, req.account, req.tenantData);
   const validStockKey = stockAccessKey && password === stockAccessKey;
 
   if (!validAccountPassword && !validStockKey) {
@@ -653,25 +653,57 @@ app.post("/api/vacitech/chief-access", async (req, res) => {
 
   if (!isAdminAccount(req.account)) {
     return res.status(403).json({
-      message: "Apenas chefe/admin pode acessar este ambiente.",
+      message: "Apenas administrador pode acessar este ambiente.",
     });
   }
 
   if (!password) {
     return res.status(400).json({
-      message: "Informe a senha do chefe/admin.",
+      message: "Informe a senha do administrador.",
     });
   }
 
-  if (!verifyPassword(password, req.account.passwordHash)) {
+  if (!verifyAdminAccessPassword(password, req.account, req.tenantData)) {
     return res.status(401).json({
-      message: "Senha do chefe/admin incorreta.",
+      message: "Senha do administrador incorreta.",
     });
   }
 
   res.json({
     success: true,
     role: req.account.role || "admin",
+  });
+});
+
+app.put("/api/vacitech/admin-access-password", async (req, res) => {
+  const password = String(req.body.password || "").trim();
+
+  if (!isAdminAccount(req.account)) {
+    return res.status(403).json({
+      message: "Apenas administrador pode alterar a senha administrativa.",
+    });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({
+      message: "Informe uma senha com pelo menos 6 caracteres.",
+    });
+  }
+
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+
+  tenantData.adminAccess = {
+    passwordHash: hashPassword(password),
+    updatedAt: new Date().toISOString(),
+  };
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    success: true,
+    updatedAt: tenantData.adminAccess.updatedAt,
   });
 });
 
@@ -1585,12 +1617,9 @@ app.post("/api/vacitech/vaccinator-login", async (req, res) => {
     });
   }
 
-  const subscription = getSubscriptionStatus(match.tenantData.subscription);
-
-  if (!subscription.active) {
+  if (!hasActiveVaccinatorLink(data, vaccinator)) {
     return res.status(402).json({
       message: "Assinatura vencida. A granja precisa renovar a mensalidade para liberar o app do vacinador.",
-      subscription,
     });
   }
 
@@ -1608,12 +1637,9 @@ app.get("/api/vacitech/vaccinator-portal/:id", async (req, res) => {
     });
   }
 
-  const subscription = getSubscriptionStatus(match.tenantData.subscription);
-
-  if (!subscription.active) {
+  if (!hasActiveVaccinatorLink(data, vaccinator)) {
     return res.status(402).json({
       message: "Assinatura vencida. A granja precisa renovar a mensalidade para liberar o app do vacinador.",
-      subscription,
     });
   }
 
@@ -1631,12 +1657,9 @@ app.patch("/api/vacitech/vaccinator-portal/:id/notification-contact", async (req
     });
   }
 
-  const subscription = getSubscriptionStatus(match.tenantData.subscription);
-
-  if (!subscription.active) {
+  if (!hasActiveVaccinatorLink(data, vaccinator)) {
     return res.status(402).json({
       message: "Assinatura vencida. A granja precisa renovar a mensalidade para liberar o app do vacinador.",
-      subscription,
     });
   }
 
@@ -1691,12 +1714,9 @@ app.delete("/api/vacitech/vaccinator-portal/:id/notifications", async (req, res)
     });
   }
 
-  const subscription = getSubscriptionStatus(match.tenantData.subscription);
-
-  if (!subscription.active) {
+  if (!hasActiveVaccinatorLink(data, vaccinator)) {
     return res.status(402).json({
       message: "Assinatura vencida. A granja precisa renovar a mensalidade para liberar o app do vacinador.",
-      subscription,
     });
   }
 
@@ -2179,6 +2199,10 @@ function gerarCalendario(dataAlojamento) {
 function getEmptyTenantData() {
   return {
     farmProfile: {},
+    adminAccess: {
+      passwordHash: "",
+      updatedAt: "",
+    },
     vaccines: [],
     entries: [],
     outputs: [],
@@ -2365,6 +2389,9 @@ function getTenantData(data, tenantId) {
     ...getEmptyTenantData(),
     ...(data.tenants?.[tenantId] || {}),
     farmProfile: data.tenants?.[tenantId]?.farmProfile || {},
+    adminAccess: data.tenants?.[tenantId]?.adminAccess && typeof data.tenants[tenantId].adminAccess === "object"
+      ? data.tenants[tenantId].adminAccess
+      : { passwordHash: "", updatedAt: "" },
     vaccines: Array.isArray(data.tenants?.[tenantId]?.vaccines)
       ? data.tenants[tenantId].vaccines
       : [],
@@ -2421,6 +2448,16 @@ function verifyPassword(password, passwordHash) {
     hashPasswordWithSecret(password, authSecret) === passwordHash ||
     hashPasswordWithSecret(password, "granja-system-dev-secret") === passwordHash
   );
+}
+
+function verifyAdminAccessPassword(password, account, tenantData) {
+  const adminPasswordHash = tenantData?.adminAccess?.passwordHash;
+
+  if (adminPasswordHash) {
+    return verifyPassword(password, adminPasswordHash);
+  }
+
+  return verifyPassword(password, account.passwordHash);
 }
 
 function isAdminAccount(account) {
@@ -2543,6 +2580,22 @@ function findVaccinatorAcrossTenants(data, search) {
   }
 
   return expiredMatch;
+}
+
+function hasActiveVaccinatorLink(data, vaccinator) {
+  return Object.entries(data.tenants || {}).some(([tenantId, rawTenantData]) => {
+    const tenantData = getTenantData(data, tenantId);
+
+    if (isTenantArchived(tenantData)) {
+      return false;
+    }
+
+    const linked = tenantData.vaccinators.some((item) => (
+      matchesVaccinator(item, vaccinator) || matchesVaccinatorEmail(item, vaccinator)
+    ));
+
+    return linked && getSubscriptionStatus(tenantData.subscription).active;
+  });
 }
 
 function createInitialSubscription() {
@@ -2778,6 +2831,8 @@ function normalizeVaccineUsages(value) {
     .map((item, index) => {
       const flaskCc = String(item.flaskCc || item.ccPerFlask || item.flasks || item.frascos || "").trim();
       const dosePerBirdCc = String(item.dosePerBirdCc || item.ccPerBird || "").trim();
+      const birdsVaccinated = String(item.birdsVaccinated || item.avesVacinadas || "").trim();
+      const requiredCc = Number(item.requiredCc || item.totalCc || calculateRequiredCc(birdsVaccinated, dosePerBirdCc) || 0);
       const birdsPerFlask = Number(item.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
 
       return {
@@ -2786,9 +2841,11 @@ function normalizeVaccineUsages(value) {
         vacina: String(item.vacina || item.name || "Vacina").trim(),
         codigo: String(item.codigo || "").trim(),
         fabricante: String(item.fabricante || item.manufacturer || "").trim(),
-        doses: Number(item.doses || birdsPerFlask || 0),
+        doses: Number(item.doses || requiredCc || birdsPerFlask || 0),
         flaskCc,
         dosePerBirdCc,
+        birdsVaccinated,
+        requiredCc,
         birdsPerFlask,
         flasks: flaskCc,
         laborCost: parseDecimalValue(item.laborCost ?? item.maoDeObra ?? 0),
@@ -2813,6 +2870,17 @@ function calculateBirdsPerFlask(flaskCc, dosePerBirdCc) {
   }
 
   return Math.floor(flask / dose);
+}
+
+function calculateRequiredCc(birdsVaccinated, dosePerBirdCc) {
+  const birds = parseDecimalValue(birdsVaccinated);
+  const dose = parseDecimalValue(dosePerBirdCc);
+
+  if (birds <= 0 || dose <= 0) {
+    return 0;
+  }
+
+  return Number((birds * dose).toFixed(2));
 }
 
 function formatQuantity(value) {
@@ -2861,6 +2929,8 @@ function getVaccinationTotalDoses(request = {}) {
 function getUsageTechnicalText(item) {
   const flaskCc = String(item.flaskCc || item.flasks || item.frascos || "").trim();
   const dosePerBirdCc = String(item.dosePerBirdCc || "").trim();
+  const birdsVaccinated = String(item.birdsVaccinated || item.avesVacinadas || "").trim();
+  const requiredCc = Number(item.requiredCc || item.totalCc || calculateRequiredCc(birdsVaccinated, dosePerBirdCc) || 0);
   const birdsPerFlask = Number(item.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
   const parts = [];
 
@@ -2870,6 +2940,14 @@ function getUsageTechnicalText(item) {
 
   if (dosePerBirdCc) {
     parts.push(`${dosePerBirdCc} cc/ave`);
+  }
+
+  if (birdsVaccinated) {
+    parts.push(`${formatQuantity(birdsVaccinated)} aves vacinadas`);
+  }
+
+  if (requiredCc > 0) {
+    parts.push(`${formatQuantity(requiredCc)} cc necessarios`);
   }
 
   if (birdsPerFlask > 0) {
@@ -2919,10 +2997,14 @@ function buildVaccinationMaterials(request = {}) {
     const doses = Number(item.doses || 0);
     const flaskCc = String(item.flaskCc || item.flasks || item.frascos || "").trim();
     const dosePerBirdCc = String(item.dosePerBirdCc || "").trim();
+    const birdsVaccinated = String(item.birdsVaccinated || item.avesVacinadas || "").trim();
+    const requiredCc = Number(item.requiredCc || item.totalCc || calculateRequiredCc(birdsVaccinated, dosePerBirdCc) || 0);
     const birdsPerFlask = Number(item.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
     const technicalText = getUsageTechnicalText({
       flaskCc,
       dosePerBirdCc,
+      birdsVaccinated,
+      requiredCc,
       birdsPerFlask,
     });
 
@@ -3700,7 +3782,7 @@ function getPublicVaccinatorPortalData(data, vaccinator) {
 
   Object.entries(data.tenants || {}).forEach(([tenantId, rawTenantData]) => {
     const tenantData = getTenantData(data, tenantId);
-    if (isTenantArchived(tenantData)) {
+    if (isTenantArchived(tenantData) || !getSubscriptionStatus(tenantData.subscription).active) {
       return;
     }
 

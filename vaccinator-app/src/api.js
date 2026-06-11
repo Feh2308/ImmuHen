@@ -1,24 +1,56 @@
+const PRODUCTION_API_URL = "https://immuhen.onrender.com";
+const API_TIMEOUT_MS = 15000;
+
+function getDefaultApiUrl() {
+  const hostname = window.location.hostname;
+  const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(hostname);
+
+  if (isLocalHost) {
+    return `${window.location.protocol}//${hostname}:3001`;
+  }
+
+  return PRODUCTION_API_URL;
+}
+
 export const API_BASE_URL = (
   import.meta.env.VITE_API_URL ||
-  `${window.location.protocol}//${window.location.hostname}:3001`
+  getDefaultApiUrl()
 ).replace(/\/$/, "");
 
 async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    const isTimeout = error.name === "AbortError";
+    throw new Error(
+      isTimeout
+        ? "A API demorou para responder. Verifique a internet e tente novamente."
+        : "Nao foi possivel conectar ao servidor ImmuHen. Verifique se o app esta apontando para a API correta."
+    );
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     const message = response.status === 402
       ? "Assinatura vencida. Entre em contato com a granja para renovar."
       : error.message || "Nao foi possivel conectar ao ImmuHen";
-
-    throw new Error(message);
+    const requestError = new Error(message);
+    requestError.status = response.status;
+    throw requestError;
   }
 
   return response.json();

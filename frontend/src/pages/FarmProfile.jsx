@@ -264,7 +264,7 @@ function FarmProfile() {
   const logoInitial = (form.farmName.trim() || "I").charAt(0).toUpperCase();
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
       <Sidebar />
 
       <main className="min-w-0 flex-1 p-4 md:p-8">

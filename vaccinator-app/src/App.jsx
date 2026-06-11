@@ -187,9 +187,33 @@ function calculateBirdsPerFlask(flaskCc, dosePerBirdCc) {
   return Math.floor(flask / dose);
 }
 
+function calculateRequiredCc(birdsVaccinated, dosePerBirdCc) {
+  const birds = parseQuantity(birdsVaccinated);
+  const dose = parseQuantity(dosePerBirdCc);
+
+  if (birds <= 0 || dose <= 0) {
+    return 0;
+  }
+
+  return Number((birds * dose).toFixed(2));
+}
+
+function getUsageBirdsVaccinated(item) {
+  return item?.birdsVaccinated ?? item?.avesVacinadas ?? "";
+}
+
+function getUsageRequiredCc(item) {
+  return parseQuantity(item?.requiredCc ?? item?.totalCc) || calculateRequiredCc(
+    getUsageBirdsVaccinated(item),
+    item?.dosePerBirdCc
+  );
+}
+
 function getUsageTechnicalText(item) {
   const flaskCc = String(item.flaskCc || item.flasks || item.frascos || "").trim();
   const dosePerBirdCc = String(item.dosePerBirdCc || "").trim();
+  const birdsVaccinated = String(getUsageBirdsVaccinated(item) || "").trim();
+  const requiredCc = getUsageRequiredCc(item);
   const birdsPerFlask = Number(item.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
   const parts = [];
 
@@ -199,6 +223,14 @@ function getUsageTechnicalText(item) {
 
   if (dosePerBirdCc) {
     parts.push(`${dosePerBirdCc} cc/ave`);
+  }
+
+  if (birdsVaccinated) {
+    parts.push(`${formatQuantity(birdsVaccinated)} aves vacinadas`);
+  }
+
+  if (requiredCc > 0) {
+    parts.push(`${formatQuantity(requiredCc)} cc necessarios`);
   }
 
   if (birdsPerFlask > 0) {
@@ -279,9 +311,14 @@ function App() {
   const [session, setSession] = useState(() => {
     const storedSession = localStorage.getItem("vaccinatorSession");
 
-    return storedSession
-      ? JSON.parse(storedSession)
-      : null;
+    try {
+      return storedSession
+        ? JSON.parse(storedSession)
+        : null;
+    } catch (error) {
+      localStorage.removeItem("vaccinatorSession");
+      return null;
+    }
   });
   const [credentials, setCredentials] = useState({
     email: "",
@@ -334,6 +371,27 @@ function App() {
       normalizeStatus(request.status) === "PENDENTE"
     ));
   }, [activeRequests]);
+
+  const agendaDays = useMemo(() => {
+    const grouped = new Map();
+
+    activeRequests.forEach((request) => {
+      const date = request.vaccinationStartDate || request.date || "sem-data";
+      const group = grouped.get(date) || {
+        date,
+        label: date === "sem-data" ? "Sem data definida" : formatDate(date),
+        requests: [],
+      };
+
+      group.requests.push(request);
+      grouped.set(date, group);
+    });
+
+    return Array.from(grouped.values()).sort((first, second) => (
+      first.date.localeCompare(second.date)
+    ));
+  }, [activeRequests]);
+
   const notificationCount = portalData?.notifications?.length || 0;
   const monthlyReports = portalData?.monthlyReports || [];
   const currentMonthReport = monthlyReports.find((report) => report.month === getCurrentMonthKey());
@@ -349,6 +407,12 @@ function App() {
       setMessage("");
     } catch (error) {
       setMessage(error.message);
+
+      if (error.status === 404 || error.status === 402) {
+        localStorage.removeItem("vaccinatorSession");
+        setSession(null);
+        setPortalData(null);
+      }
     }
   }
 
@@ -987,7 +1051,7 @@ function App() {
                           <div className="report-materials">
                             {materials.map((material, index) => (
                               <em key={`${material.id}-${index}`}>
-                                {material.vacina}: {material.doses} doses{material.technicalDetails ? ` | ${material.technicalDetails}` : ""}
+                                {material.vacina}: {material.doses} cc{material.technicalDetails ? ` | ${material.technicalDetails}` : ""}
                               </em>
                             ))}
                           </div>
@@ -1034,6 +1098,32 @@ function App() {
             </p>
           )}
 
+          {agendaDays.length > 0 && (
+            <div className="agenda-board">
+              {agendaDays.map((day) => (
+                <section className="agenda-day" key={day.date}>
+                  <div className="agenda-date">
+                    <strong>{day.label}</strong>
+                    <span>{day.requests.length} evento(s)</span>
+                  </div>
+
+                  <div className="agenda-events">
+                    {day.requests.map((request) => (
+                      <article className="agenda-event" key={`agenda-${request.id}`}>
+                        <strong>{request.farmName || "Granja"}</strong>
+                        <span>
+                          {request.programDay ? `Dia ${request.programDay}` : "Vacina"}
+                          {request.birdLotName ? ` | ${request.birdLotName}` : ""}
+                        </span>
+                        <em>{normalizeStatus(request.status)}</em>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+
           {activeRequests.map((request) => {
             const status = normalizeStatus(request.status);
 
@@ -1072,7 +1162,7 @@ function App() {
                     <strong>{request.applicationMethod || request.vaccineUsages?.[0]?.applicationMethod || "-"}</strong>
                   </div>
                   <div>
-                    <span>Doses usadas</span>
+                    <span>Total cc</span>
                     <strong>{formatQuantity(getRequestTotalDoses(request))}</strong>
                   </div>
                   <div>
@@ -1088,6 +1178,8 @@ function App() {
                       {request.vaccineUsages.map((usage, index) => {
                         const flaskCc = String(usage.flaskCc || usage.flasks || usage.frascos || "").trim();
                         const dosePerBirdCc = String(usage.dosePerBirdCc || "").trim();
+                        const birdsVaccinated = String(getUsageBirdsVaccinated(usage) || "").trim();
+                        const requiredCc = getUsageRequiredCc(usage);
                         const birdsPerFlask = Number(usage.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
 
                         return (
@@ -1097,12 +1189,14 @@ function App() {
                                 <h4>{usage.vacina || "Vacina"}</h4>
                                 <p>Fabricante: {usage.fabricante || usage.manufacturer || "-"}</p>
                               </div>
-                              <span>{formatQuantity(usage.doses)} doses</span>
+                              <span>{formatQuantity(usage.doses)} cc</span>
                             </div>
 
                             <div className="vaccine-usage-details">
                               <p><strong>Frasco</strong>{flaskCc ? `${flaskCc} cc` : "-"}</p>
                               <p><strong>Dose/ave</strong>{dosePerBirdCc ? `${dosePerBirdCc} cc` : "-"}</p>
+                              <p><strong>Aves vacinadas</strong>{birdsVaccinated ? formatQuantity(birdsVaccinated) : "-"}</p>
+                              <p><strong>Total cc</strong>{requiredCc > 0 ? formatQuantity(requiredCc) : "-"}</p>
                               <p><strong>Aves/frasco</strong>{birdsPerFlask > 0 ? formatQuantity(birdsPerFlask) : "-"}</p>
                               <p><strong>Via</strong>{usage.applicationMethod || "-"}</p>
                             </div>

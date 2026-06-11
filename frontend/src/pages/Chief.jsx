@@ -4,7 +4,10 @@ import Sidebar from "../components/Sidebar";
 import {
   useVaccines,
 } from "../context/VaccineContext";
-import { authorizeChiefAccessApi } from "../services/vacitechApi";
+import {
+  authorizeChiefAccessApi,
+  updateAdminAccessPasswordApi,
+} from "../services/vacitechApi";
 import { readJson } from "../utils/vacitechStorage";
 import { sortVaccinesByCode } from "../utils/vaccineSort";
 
@@ -59,9 +62,9 @@ function getCurrentUserLabel() {
   try {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
 
-    return user.name || user.email || "Chefe";
+    return user.name || user.email || "Administrador";
   } catch (error) {
-    return "Chefe";
+    return "Administrador";
   }
 }
 
@@ -102,6 +105,18 @@ function Chief() {
 
   const [accessMessage, setAccessMessage] =
     useState("");
+
+  const [adminPasswordForm, setAdminPasswordForm] =
+    useState({
+      password: "",
+      confirmPassword: "",
+    });
+
+  const [adminPasswordMessage, setAdminPasswordMessage] =
+    useState("");
+
+  const [adminPasswordLoading, setAdminPasswordLoading] =
+    useState(false);
 
   const [editingVaccineId, setEditingVaccineId] =
     useState("");
@@ -248,7 +263,7 @@ function Chief() {
       setAuthorized(true);
       setPassword("");
     } catch (error) {
-      setAccessMessage(error.message || "Senha do chefe/admin incorreta.");
+      setAccessMessage(error.message || "Senha do administrador incorreta.");
     } finally {
       setAccessLoading(false);
     }
@@ -258,6 +273,35 @@ function Chief() {
     sessionStorage.removeItem("chiefAuthorized");
     setAuthorized(false);
     setPassword("");
+  }
+
+  async function saveAdminAccessPassword() {
+    setAdminPasswordMessage("");
+
+    if (adminPasswordForm.password.length < 6) {
+      setAdminPasswordMessage("Use uma senha com pelo menos 6 caracteres.");
+      return;
+    }
+
+    if (adminPasswordForm.password !== adminPasswordForm.confirmPassword) {
+      setAdminPasswordMessage("As senhas digitadas nao conferem.");
+      return;
+    }
+
+    setAdminPasswordLoading(true);
+
+    try {
+      await updateAdminAccessPasswordApi(adminPasswordForm.password);
+      setAdminPasswordForm({
+        password: "",
+        confirmPassword: "",
+      });
+      setAdminPasswordMessage("Senha do Administrador e Estoque atualizada.");
+    } catch (error) {
+      setAdminPasswordMessage(error.message || "Nao foi possivel atualizar a senha.");
+    } finally {
+      setAdminPasswordLoading(false);
+    }
   }
 
   function approveRequest(requestId) {
@@ -414,23 +458,23 @@ function Chief() {
 
   if (!authorized) {
     return (
-      <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-white">
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
 
         <Sidebar />
 
         <div className="flex-1 p-8">
           <div className="max-w-xl rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
             <h1 className="text-4xl font-bold text-zinc-900">
-              Ambiente do Chefe
+              Ambiente do Administrador
             </h1>
 
             <p className="mt-2 text-zinc-500">
-              Confirme a senha do chefe/admin para liberar aprovacoes e indicadores.
+              Confirme a senha do administrador para liberar aprovacoes e indicadores.
             </p>
 
             <input
               type="password"
-              placeholder="Senha do chefe/admin"
+              placeholder="Senha do administrador"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="mt-6 w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none"
@@ -457,7 +501,7 @@ function Chief() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-green-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
 
       <Sidebar />
 
@@ -467,7 +511,7 @@ function Chief() {
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <h1 className="text-5xl font-bold text-zinc-900">
-                Ambiente do Chefe
+                Ambiente do Administrador
               </h1>
 
               <p className="mt-2 text-zinc-500">
@@ -484,6 +528,58 @@ function Chief() {
             </button>
           </div>
         </div>
+
+        <section className="mt-6 rounded-3xl border border-green-100 bg-white p-6 shadow-sm">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_180px] xl:items-end">
+            <div>
+              <h2 className="text-2xl font-bold text-zinc-900">
+                Senha do Administrador e Estoque
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Defina uma senha separada do login dos funcionarios para liberar este ambiente e o estoque.
+              </p>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input
+                  type="password"
+                  value={adminPasswordForm.password}
+                  onChange={(event) => setAdminPasswordForm({
+                    ...adminPasswordForm,
+                    password: event.target.value,
+                  })}
+                  placeholder="Nova senha administrativa"
+                  className="rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white"
+                />
+
+                <input
+                  type="password"
+                  value={adminPasswordForm.confirmPassword}
+                  onChange={(event) => setAdminPasswordForm({
+                    ...adminPasswordForm,
+                    confirmPassword: event.target.value,
+                  })}
+                  placeholder="Confirmar senha"
+                  className="rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={saveAdminAccessPassword}
+              disabled={adminPasswordLoading}
+              className="rounded-2xl bg-green-600 px-6 py-4 font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+            >
+              {adminPasswordLoading ? "Salvando..." : "Salvar senha"}
+            </button>
+          </div>
+
+          {adminPasswordMessage && (
+            <p className="mt-4 rounded-2xl border border-green-100 bg-green-50 px-5 py-4 text-sm font-bold text-green-700">
+              {adminPasswordMessage}
+            </p>
+          )}
+        </section>
 
         <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3 xl:grid-cols-6">
           <div className="rounded-3xl border border-green-100 bg-white p-6 shadow-sm">
@@ -585,7 +681,7 @@ function Chief() {
           </h2>
 
           <p className="mt-2 text-zinc-500">
-            Somente o chefe altera nome, codigo, doses por frasco, valor padrao por dose e exclusoes.
+            Somente o administrador altera nome, codigo, quantidade de doses, valor padrao por dose e exclusoes.
           </p>
 
           {editingVaccineId && (
