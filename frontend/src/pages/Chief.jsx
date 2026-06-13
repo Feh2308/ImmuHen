@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Sidebar from "../components/Sidebar";
 import {
@@ -6,10 +6,28 @@ import {
 } from "../context/VaccineContext";
 import {
   authorizeChiefAccessApi,
+  createUserApi,
+  deleteUserApi,
+  fetchUsersApi,
   updateAdminAccessPasswordApi,
+  updateUserApi,
 } from "../services/vacitechApi";
+import {
+  PERMISSION_OPTIONS,
+  ROLE_OPTIONS,
+  getDefaultPermissionsForRole,
+  isAdminUser,
+} from "../utils/permissions";
 import { readJson } from "../utils/vacitechStorage";
 import { sortVaccinesByCode } from "../utils/vaccineSort";
+
+const emptyUserForm = {
+  name: "",
+  email: "",
+  password: "",
+  role: "FUNCIONARIO",
+  permissions: getDefaultPermissionsForRole("FUNCIONARIO"),
+};
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString("pt-BR", {
@@ -121,6 +139,27 @@ function Chief() {
   const [adminPasswordLoading, setAdminPasswordLoading] =
     useState(false);
 
+  const [managedUsers, setManagedUsers] =
+    useState([]);
+
+  const [managedRoles, setManagedRoles] =
+    useState(ROLE_OPTIONS);
+
+  const [managedPermissions, setManagedPermissions] =
+    useState(PERMISSION_OPTIONS);
+
+  const [userForm, setUserForm] =
+    useState(emptyUserForm);
+
+  const [editingUserId, setEditingUserId] =
+    useState("");
+
+  const [usersLoading, setUsersLoading] =
+    useState(false);
+
+  const [userMessage, setUserMessage] =
+    useState("");
+
   const [editingVaccineId, setEditingVaccineId] =
     useState("");
 
@@ -159,6 +198,14 @@ function Chief() {
   const completedVaccinations = Array.isArray(storedCompletedVaccinations)
     ? storedCompletedVaccinations
     : [];
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "{}");
+    } catch (error) {
+      return {};
+    }
+  }, []);
+  const canManageUsers = isAdminUser(currentUser);
 
   const summary = useMemo(() => {
     const totalEntries = entries.reduce((total, entry) => total + Number(entry.doses || 0), 0);
@@ -257,6 +304,141 @@ function Chief() {
     return defaultValue > 0
       ? defaultValue
       : getLastEntryDoseValue(vaccine?.id);
+  }
+
+  useEffect(() => {
+    if (authorized && canManageUsers) {
+      loadManagedUsers();
+    }
+  }, [authorized, canManageUsers]);
+
+  async function loadManagedUsers() {
+    setUsersLoading(true);
+    setUserMessage("");
+
+    try {
+      const data = await fetchUsersApi();
+      setManagedUsers(data.users || []);
+      setManagedRoles(
+        Array.isArray(data.roles) && data.roles.length > 0
+          ? data.roles.map((role) => ({ role: role.role, label: role.label }))
+          : ROLE_OPTIONS
+      );
+      setManagedPermissions(
+        Array.isArray(data.permissions) && data.permissions.length > 0
+          ? data.permissions
+          : PERMISSION_OPTIONS
+      );
+    } catch (error) {
+      setUserMessage(error.message || "Nao foi possivel carregar usuarios.");
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  function resetUserForm() {
+    setEditingUserId("");
+    setUserForm({
+      ...emptyUserForm,
+      permissions: [...emptyUserForm.permissions],
+    });
+  }
+
+  function updateUserForm(field, value) {
+    if (field === "role") {
+      setUserForm({
+        ...userForm,
+        role: value,
+        permissions: getDefaultPermissionsForRole(value),
+      });
+      return;
+    }
+
+    setUserForm({
+      ...userForm,
+      [field]: value,
+    });
+  }
+
+  function toggleUserPermission(permission) {
+    const normalizedPermission = String(permission || "").trim().toUpperCase();
+    const currentPermissions = userForm.permissions || [];
+    const nextPermissions = currentPermissions.includes(normalizedPermission)
+      ? currentPermissions.filter((item) => item !== normalizedPermission)
+      : [...currentPermissions, normalizedPermission];
+
+    setUserForm({
+      ...userForm,
+      permissions: nextPermissions,
+    });
+  }
+
+  function startUserEdit(user) {
+    setEditingUserId(user.id);
+    setUserForm({
+      name: user.name || "",
+      email: user.email || "",
+      password: "",
+      role: user.role || "FUNCIONARIO",
+      permissions: Array.isArray(user.permissions) && user.permissions.length > 0
+        ? user.permissions
+        : getDefaultPermissionsForRole(user.role),
+    });
+  }
+
+  async function saveManagedUser() {
+    setUserMessage("");
+
+    if (!userForm.name || !userForm.email) {
+      setUserMessage("Informe nome e email do usuario.");
+      return;
+    }
+
+    if (!editingUserId && userForm.password.length < 6) {
+      setUserMessage("Informe senha com pelo menos 6 caracteres.");
+      return;
+    }
+
+    setUsersLoading(true);
+
+    try {
+      const payload = {
+        ...userForm,
+        permissions: userForm.permissions,
+      };
+      const data = editingUserId
+        ? await updateUserApi(editingUserId, payload)
+        : await createUserApi(payload);
+
+      setManagedUsers(data.users || []);
+      resetUserForm();
+      setUserMessage(editingUserId ? "Usuario atualizado." : "Usuario criado.");
+    } catch (error) {
+      setUserMessage(error.message || "Nao foi possivel salvar o usuario.");
+    } finally {
+      setUsersLoading(false);
+    }
+  }
+
+  async function deleteManagedUser(user) {
+    const confirmed = window.confirm(`Excluir o usuario ${user.email}?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setUsersLoading(true);
+    setUserMessage("");
+
+    try {
+      const data = await deleteUserApi(user.id);
+      setManagedUsers(data.users || []);
+      setUserMessage("Usuario excluido.");
+    } catch (error) {
+      setUserMessage(error.message || "Nao foi possivel excluir o usuario.");
+    } finally {
+      setUsersLoading(false);
+    }
   }
 
   async function handleChiefAccess() {
@@ -594,6 +776,169 @@ function Chief() {
             </p>
           )}
         </section>
+
+        {canManageUsers && (
+          <section className="mt-6 rounded-3xl border border-green-100 bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-zinc-900">
+                  Usuarios e permissoes
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Crie acessos separados para gerente, funcionario e visualizador sem liberar todos os modulos.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={loadManagedUsers}
+                disabled={usersLoading}
+                className="rounded-2xl bg-zinc-900 px-6 py-3 font-bold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+              >
+                {usersLoading ? "Carregando..." : "Atualizar lista"}
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 rounded-3xl border border-green-100 bg-green-50 p-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <input
+                  type="text"
+                  placeholder="Nome do usuario"
+                  value={userForm.name}
+                  onChange={(event) => updateUserForm("name", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="email"
+                  placeholder="Email"
+                  value={userForm.email}
+                  onChange={(event) => updateUserForm("email", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <input
+                  type="password"
+                  placeholder={editingUserId ? "Nova senha opcional" : "Senha"}
+                  value={userForm.password}
+                  onChange={(event) => updateUserForm("password", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                />
+
+                <select
+                  value={userForm.role}
+                  onChange={(event) => updateUserForm("role", event.target.value)}
+                  className="rounded-2xl border border-green-100 bg-white p-4 outline-none"
+                >
+                  {managedRoles.map((role) => (
+                    <option key={role.role} value={role.role}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                {managedPermissions.map((permission) => (
+                  <label
+                    key={permission.module}
+                    className="flex items-center gap-3 rounded-2xl bg-white p-3 text-sm font-semibold text-zinc-700 ring-1 ring-green-100"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={(userForm.permissions || []).includes(permission.module)}
+                      onChange={() => toggleUserPermission(permission.module)}
+                      className="h-4 w-4 accent-green-600"
+                    />
+                    {permission.label}
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={saveManagedUser}
+                  disabled={usersLoading}
+                  className="rounded-2xl bg-green-600 px-6 py-3 font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                >
+                  {editingUserId ? "Salvar usuario" : "Criar usuario"}
+                </button>
+
+                {editingUserId && (
+                  <button
+                    type="button"
+                    onClick={resetUserForm}
+                    className="rounded-2xl bg-white px-6 py-3 font-bold text-green-700 ring-1 ring-green-100 transition hover:bg-green-100"
+                  >
+                    Cancelar edicao
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {userMessage && (
+              <p className="mt-4 rounded-2xl border border-green-100 bg-green-50 px-5 py-4 text-sm font-bold text-green-700">
+                {userMessage}
+              </p>
+            )}
+
+            <div className="mt-6 overflow-x-auto">
+              <table className="w-full text-left text-zinc-900">
+                <thead>
+                  <tr className="border-b border-green-100 text-zinc-500">
+                    <th className="pb-4">Nome</th>
+                    <th className="pb-4">Email</th>
+                    <th className="pb-4">Perfil</th>
+                    <th className="pb-4">Permissoes</th>
+                    <th className="pb-4">Acoes</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {managedUsers.map((user) => (
+                    <tr key={user.id} className="border-b border-green-100 last:border-b-0">
+                      <td className="py-4">{user.name}</td>
+                      <td>{user.email}</td>
+                      <td>{managedRoles.find((role) => role.role === user.role)?.label || user.role}</td>
+                      <td className="max-w-xl">
+                        <span className="text-sm text-zinc-500">
+                          {(user.permissions || []).join(", ")}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startUserEdit(user)}
+                            className="rounded-xl bg-zinc-900 px-4 py-2 font-bold text-white transition hover:bg-zinc-800"
+                          >
+                            Editar
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => deleteManagedUser(user)}
+                            disabled={user.id === currentUser.id}
+                            className="rounded-xl bg-red-600 px-4 py-2 font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {managedUsers.length === 0 && (
+                <p className="mt-4 rounded-2xl bg-green-50 p-5 text-zinc-500">
+                  Nenhum usuario carregado.
+                </p>
+              )}
+            </div>
+          </section>
+        )}
 
         <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3 xl:grid-cols-6">
           <div className="rounded-3xl border border-green-100 bg-white p-6 shadow-sm">

@@ -4,6 +4,7 @@ const CURRENT_TENANT_KEY = "currentTenantId";
 const TENANT_STORAGE_PREFIX = "immuhen:tenant:";
 const TENANT_SCOPED_KEYS = new Set([
   "farmProfile",
+  "tenantSettings",
   "vaccinators",
   "schedules",
   "requests",
@@ -16,6 +17,7 @@ const TENANT_SCOPED_KEYS = new Set([
   "stockAlertLevels",
   "stockAlertHistory",
   "vaccineEditRequests",
+  "entryEditRequests",
   "vaccineAuditLog",
 ]);
 

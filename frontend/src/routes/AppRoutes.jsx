@@ -15,6 +15,9 @@ import VaccinatorPortal from "../pages/VaccinatorPortal";
 import RegisterFarm from "../pages/RegisterFarm";
 import TemperatureCapture from "../pages/TemperatureCapture";
 import Chief from "../pages/Chief";
+import OwnerAdmin from "../pages/OwnerAdmin";
+import PermissionRoute from "../components/PermissionRoute";
+import { ACCESS_MODULES } from "../utils/permissions";
 
 export default function AppRoutes() {
 
@@ -27,31 +30,32 @@ export default function AppRoutes() {
         <Route path="/" element={<Login />} />
         <Route path="/cadastro" element={<RegisterFarm />} />
         <Route path="/vacinador" element={<VaccinatorPortal />} />
+        <Route path="/admin-geral" element={<OwnerAdmin />} />
         <Route path="/temperatura-vacina" element={<TemperatureCapture />} />
         <Route path="/cadastro-granja" element={<FarmSetup />} />
 
         {/* WELCOME */}
-        <Route path="/Home" element={<Home />} />
-        <Route path="/home" element={<Home />} />
+        <Route path="/Home" element={<PermissionRoute permissions={[ACCESS_MODULES.DASHBOARD]}><Home /></PermissionRoute>} />
+        <Route path="/home" element={<PermissionRoute permissions={[ACCESS_MODULES.DASHBOARD]}><Home /></PermissionRoute>} />
 
         {/* SISTEMA */}
-        <Route path="/vacinas" element={<Vaccines />} />
+        <Route path="/vacinas" element={<PermissionRoute permissions={[ACCESS_MODULES.VACINAS]}><Vaccines /></PermissionRoute>} />
 
-        <Route path="/entradas" element={<Entries />} />
-        <Route path="/estoque" element={<Stock />} />
+        <Route path="/entradas" element={<PermissionRoute permissions={[ACCESS_MODULES.ENTRADAS]}><Entries /></PermissionRoute>} />
+        <Route path="/estoque" element={<PermissionRoute permissions={[ACCESS_MODULES.ESTOQUE]}><Stock /></PermissionRoute>} />
 
-        <Route path="/agenda" element={<Schedule />} />
+        <Route path="/agenda" element={<PermissionRoute permissions={[ACCESS_MODULES.PROGRAMA]}><Schedule /></PermissionRoute>} />
 
-        <Route path="/vaccinators" element={<Vaccinators />} />
+        <Route path="/vaccinators" element={<PermissionRoute permissions={[ACCESS_MODULES.VACINADORES]}><Vaccinators /></PermissionRoute>} />
 
-        <Route path="/solicitacoes" element={<Request />} />
+        <Route path="/solicitacoes" element={<PermissionRoute permissions={[ACCESS_MODULES.SOLICITACOES]}><Request /></PermissionRoute>} />
 
-        <Route path="/perfil" element={<FarmProfile />} />
+        <Route path="/perfil" element={<PermissionRoute permissions={[ACCESS_MODULES.CONFIGURACOES]}><FarmProfile /></PermissionRoute>} />
 
-        <Route path="/chefe" element={<Chief />} />
-        <Route path="/administrador" element={<Chief />} />
+        <Route path="/chefe" element={<PermissionRoute permissions={[ACCESS_MODULES.ADMINISTRADOR]}><Chief /></PermissionRoute>} />
+        <Route path="/administrador" element={<PermissionRoute permissions={[ACCESS_MODULES.ADMINISTRADOR]}><Chief /></PermissionRoute>} />
 
-        <Route path="/Aves" element={<Aves />} />
+        <Route path="/Aves" element={<PermissionRoute permissions={[ACCESS_MODULES.AVES]}><Aves /></PermissionRoute>} />
 
       </Routes>
 

@@ -10,6 +10,7 @@ import {
   fetchSharedStateApi,
   saveInventoryStateApi,
 } from "../services/vacitechApi";
+import { ACCESS_MODULES, canAccess, canAccessAny } from "../utils/permissions";
 import {
   TENANT_CHANGED_EVENT,
   getCurrentTenantId,
@@ -245,15 +246,32 @@ export function VaccineProvider({
     }
 
     const timeout = setTimeout(() => {
-      saveInventoryStateApi({
-        vaccines,
-        entries,
-        outputs,
-        stockAlertLevels,
-        vaccineEditRequests,
-        entryEditRequests,
-        vaccineAuditLog,
-      }).catch((error) => {
+      const inventoryState = {};
+
+      if (canAccessAny([ACCESS_MODULES.VACINAS, ACCESS_MODULES.ADMINISTRADOR])) {
+        inventoryState.vaccines = vaccines;
+        inventoryState.vaccineEditRequests = vaccineEditRequests;
+        inventoryState.vaccineAuditLog = vaccineAuditLog;
+      }
+
+      if (canAccessAny([ACCESS_MODULES.ENTRADAS, ACCESS_MODULES.FINANCEIRO, ACCESS_MODULES.ADMINISTRADOR])) {
+        inventoryState.entries = entries;
+        inventoryState.entryEditRequests = entryEditRequests;
+      }
+
+      if (canAccessAny([ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.ADMINISTRADOR])) {
+        inventoryState.outputs = outputs;
+      }
+
+      if (canAccess(ACCESS_MODULES.ESTOQUE) || canAccess(ACCESS_MODULES.ADMINISTRADOR)) {
+        inventoryState.stockAlertLevels = stockAlertLevels;
+      }
+
+      if (Object.keys(inventoryState).length === 0) {
+        return;
+      }
+
+      saveInventoryStateApi(inventoryState).catch((error) => {
         console.log(error);
       });
     }, 600);

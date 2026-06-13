@@ -39,11 +39,105 @@ const smtpUser = process.env.SMTP_USER || "";
 const smtpPass = process.env.SMTP_PASS || "";
 const smtpSecure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || smtpPort === 465;
 const notificationFromEmail = process.env.NOTIFICATION_FROM_EMAIL || smtpUser || "";
+const defaultTenantPrimaryColor = "#16a34a";
+const defaultTenantSecondaryColor = "#dcfce7";
+const TENANT_STATUS = Object.freeze({
+  ACTIVE: "ACTIVE",
+  INACTIVE: "INACTIVE",
+});
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
   standardHeaders: true,
   legacyHeaders: false,
+});
+const ACCESS_MODULES = Object.freeze({
+  DASHBOARD: "DASHBOARD",
+  CLIENTES: "CLIENTES",
+  FINANCEIRO: "FINANCEIRO",
+  ESTOQUE: "ESTOQUE",
+  RELATORIOS: "RELATORIOS",
+  CONFIGURACOES: "CONFIGURACOES",
+  AVES: "AVES",
+  VACINAS: "VACINAS",
+  ENTRADAS: "ENTRADAS",
+  PROGRAMA: "PROGRAMA",
+  VACINADORES: "VACINADORES",
+  SOLICITACOES: "SOLICITACOES",
+  ADMINISTRADOR: "ADMINISTRADOR",
+});
+const ALL_ACCESS_MODULES = Object.freeze(Object.values(ACCESS_MODULES));
+const ROLE_DEFINITIONS = Object.freeze({
+  ADMIN: {
+    label: "Administrador",
+    permissions: ALL_ACCESS_MODULES,
+  },
+  GERENTE: {
+    label: "Gerente",
+    permissions: [
+      ACCESS_MODULES.DASHBOARD,
+      ACCESS_MODULES.CLIENTES,
+      ACCESS_MODULES.FINANCEIRO,
+      ACCESS_MODULES.ESTOQUE,
+      ACCESS_MODULES.RELATORIOS,
+      ACCESS_MODULES.CONFIGURACOES,
+      ACCESS_MODULES.AVES,
+      ACCESS_MODULES.VACINAS,
+      ACCESS_MODULES.ENTRADAS,
+      ACCESS_MODULES.PROGRAMA,
+      ACCESS_MODULES.VACINADORES,
+      ACCESS_MODULES.SOLICITACOES,
+    ],
+  },
+  FUNCIONARIO: {
+    label: "Funcionario",
+    permissions: [
+      ACCESS_MODULES.DASHBOARD,
+      ACCESS_MODULES.AVES,
+      ACCESS_MODULES.VACINAS,
+      ACCESS_MODULES.ENTRADAS,
+      ACCESS_MODULES.PROGRAMA,
+      ACCESS_MODULES.SOLICITACOES,
+    ],
+  },
+  VISUALIZADOR: {
+    label: "Visualizador",
+    permissions: [
+      ACCESS_MODULES.DASHBOARD,
+      ACCESS_MODULES.AVES,
+      ACCESS_MODULES.VACINAS,
+      ACCESS_MODULES.ESTOQUE,
+      ACCESS_MODULES.RELATORIOS,
+    ],
+  },
+});
+const PERMISSION_DEFINITIONS = Object.freeze([
+  { module: ACCESS_MODULES.DASHBOARD, label: "Dashboard" },
+  { module: ACCESS_MODULES.CLIENTES, label: "Clientes" },
+  { module: ACCESS_MODULES.FINANCEIRO, label: "Financeiro" },
+  { module: ACCESS_MODULES.ESTOQUE, label: "Estoque" },
+  { module: ACCESS_MODULES.RELATORIOS, label: "Relatorios" },
+  { module: ACCESS_MODULES.CONFIGURACOES, label: "Configuracoes" },
+  { module: ACCESS_MODULES.AVES, label: "Aves" },
+  { module: ACCESS_MODULES.VACINAS, label: "Vacinas" },
+  { module: ACCESS_MODULES.ENTRADAS, label: "Entradas" },
+  { module: ACCESS_MODULES.PROGRAMA, label: "Programa" },
+  { module: ACCESS_MODULES.VACINADORES, label: "Vacinadores" },
+  { module: ACCESS_MODULES.SOLICITACOES, label: "Solicitacoes" },
+  { module: ACCESS_MODULES.ADMINISTRADOR, label: "Administrador" },
+]);
+const LEGACY_ROLE_ALIASES = Object.freeze({
+  admin: "ADMIN",
+  administrador: "ADMIN",
+  owner: "ADMIN",
+  chefe: "ADMIN",
+  gerente: "GERENTE",
+  manager: "GERENTE",
+  funcionario: "FUNCIONARIO",
+  funcionaria: "FUNCIONARIO",
+  employee: "FUNCIONARIO",
+  visualizador: "VISUALIZADOR",
+  viewer: "VISUALIZADOR",
 });
 
 app.set("trust proxy", 1);
@@ -74,9 +168,9 @@ const adminUser = {
 app.post("/login", async (req, res) => {
   const data = await readVacitechData();
   const { email, password } = req.body;
-  const account = data.accounts.find((item) => (
+  const account = normalizeAccountAccess(data.accounts.find((item) => (
     normalizeEmail(item.email) === normalizeEmail(email)
-  ));
+  )));
 
   if (account && verifyPassword(password, account.passwordHash)) {
     const tenantData = getTenantData(data, account.tenantId);
@@ -89,6 +183,13 @@ app.post("/login", async (req, res) => {
       });
     }
 
+    if (isTenantInactive(tenantData)) {
+      return res.status(403).json({
+        success: false,
+        message: "Esta granja esta inativa. Fale com o administrador geral do ImmuHen.",
+      });
+    }
+
     if (!subscription.active) {
       return res.status(402).json({
         success: false,
@@ -98,18 +199,15 @@ app.post("/login", async (req, res) => {
       });
     }
 
+    await syncTenantRecord(account.tenantId, tenantData);
+
     return res.json({
       success: true,
       token: createAuthToken(account),
-      user: {
-        id: account.id,
-        tenantId: account.tenantId,
-        name: account.name,
-        email: account.email,
-        role: account.role || "admin",
-      },
+      user: sanitizeAccount(account),
       farmProfile: tenantData.farmProfile,
-      state: tenantData,
+      tenant: getTenantPublicConfig(account.tenantId, tenantData),
+      state: filterTenantDataForAccount(tenantData, account),
       subscription,
     });
   }
@@ -153,7 +251,8 @@ app.post("/api/accounts/register", async (req, res) => {
     name: String(req.body.owner || req.body.name || "Administrador").trim(),
     email,
     passwordHash: hashPassword(password),
-    role: "admin",
+    role: "ADMIN",
+    permissions: getDefaultPermissionsForRole("ADMIN"),
     createdAt: new Date().toISOString(),
   };
   const tenantData = {
@@ -171,6 +270,16 @@ app.post("/api/accounts/register", async (req, res) => {
       updatedAt: new Date().toLocaleString("pt-BR"),
     },
   };
+  tenantData.tenantSettings = normalizeTenantSettings(tenantId, {
+    ...tenantData,
+    tenantSettings: {
+      name: tenantData.farmProfile.farmName,
+      identifier: createTenantIdentifier(tenantData.farmProfile.farmName, tenantId),
+      primaryColor: defaultTenantPrimaryColor,
+      secondaryColor: defaultTenantSecondaryColor,
+      status: TENANT_STATUS.ACTIVE,
+    },
+  });
 
   data.accounts.push(account);
   data.tenants[tenantId] = tenantData;
@@ -179,15 +288,10 @@ app.post("/api/accounts/register", async (req, res) => {
   res.status(201).json({
     success: true,
     token: createAuthToken(account),
-    user: {
-      id: account.id,
-      tenantId: account.tenantId,
-      name: account.name,
-      email: account.email,
-      role: account.role,
-    },
+    user: sanitizeAccount(account),
     farmProfile: tenantData.farmProfile,
-    state: tenantData,
+    tenant: getTenantPublicConfig(tenantId, tenantData),
+    state: filterTenantDataForAccount(tenantData, account),
     subscription: getSubscriptionStatus(tenantData.subscription),
   });
 });
@@ -383,8 +487,143 @@ app.post("/api/owner/login", (req, res) => {
 
 app.get("/api/owner/overview", requireOwnerAccess, async (req, res) => {
   const data = await readVacitechData();
+  await syncTenantRecords(data);
 
   res.json(getOwnerOverview(data));
+});
+
+app.post("/api/owner/tenants", requireOwnerAccess, async (req, res) => {
+  const data = await readVacitechData();
+  const tenantId = `tenant-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+  const name = String(req.body.name || req.body.farmName || "").trim();
+  const identifier = sanitizeTenantIdentifier(req.body.identifier || name, tenantId);
+  const adminEmail = normalizeEmail(req.body.adminEmail || req.body.email);
+  const adminPassword = String(req.body.adminPassword || req.body.password || "");
+
+  if (!name) {
+    return res.status(400).json({
+      message: "Informe o nome da granja.",
+    });
+  }
+
+  if (isTenantIdentifierInUse(data, identifier)) {
+    return res.status(409).json({
+      message: "Este identificador ja esta em uso por outra granja.",
+    });
+  }
+
+  if (adminEmail && data.accounts.some((account) => normalizeEmail(account.email) === adminEmail)) {
+    return res.status(409).json({
+      message: "Este email de administrador ja esta cadastrado.",
+    });
+  }
+
+  if (adminEmail && adminPassword.length < 6) {
+    return res.status(400).json({
+      message: "A senha do administrador da granja precisa ter pelo menos 6 caracteres.",
+    });
+  }
+
+  const settings = normalizeTenantSettings(tenantId, {
+    tenantSettings: {
+      name,
+      identifier,
+      domain: req.body.domain,
+      logoDataUrl: req.body.logoDataUrl,
+      primaryColor: req.body.primaryColor,
+      secondaryColor: req.body.secondaryColor,
+      status: req.body.status,
+    },
+  });
+  const tenantData = {
+    ...getEmptyTenantData(),
+    tenantSettings: settings,
+    farmProfile: mergeTenantSettingsIntoProfile({
+      farmName: name,
+      city: String(req.body.city || "").trim(),
+      document: String(req.body.document || "").trim(),
+      owner: String(req.body.owner || "").trim(),
+      address: String(req.body.address || "").trim(),
+      location: String(req.body.location || "").trim(),
+      notificationContact: String(req.body.notificationContact || "").trim(),
+      updatedAt: new Date().toLocaleString("pt-BR"),
+    }, settings),
+  };
+
+  data.tenants[tenantId] = tenantData;
+
+  if (adminEmail) {
+    data.accounts.push(normalizeAccountAccess({
+      id: `account-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`,
+      tenantId,
+      name: String(req.body.adminName || req.body.owner || "Administrador").trim(),
+      email: adminEmail,
+      passwordHash: hashPassword(adminPassword),
+      role: "ADMIN",
+      permissions: getDefaultPermissionsForRole("ADMIN"),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  await writeVacitechData(data);
+
+  res.status(201).json({
+    tenant: getOwnerOverview(data).tenants.find((tenant) => tenant.tenantId === tenantId),
+    overview: getOwnerOverview(data),
+  });
+});
+
+app.put("/api/owner/tenants/:tenantId", requireOwnerAccess, async (req, res) => {
+  const data = await readVacitechData();
+
+  if (!data.tenants?.[req.params.tenantId]) {
+    return res.status(404).json({
+      message: "Granja nao encontrada.",
+    });
+  }
+
+  const tenantData = getTenantData(data, req.params.tenantId);
+  const nextSettings = normalizeTenantSettings(req.params.tenantId, {
+    ...tenantData,
+    tenantSettings: {
+      ...tenantData.tenantSettings,
+      name: req.body.name ?? req.body.farmName ?? tenantData.tenantSettings.name,
+      identifier: req.body.identifier ?? tenantData.tenantSettings.identifier,
+      domain: req.body.domain ?? tenantData.tenantSettings.domain,
+      logoDataUrl: req.body.logoDataUrl ?? tenantData.tenantSettings.logoDataUrl,
+      primaryColor: req.body.primaryColor ?? tenantData.tenantSettings.primaryColor,
+      secondaryColor: req.body.secondaryColor ?? tenantData.tenantSettings.secondaryColor,
+      status: req.body.status ?? tenantData.tenantSettings.status,
+    },
+  });
+
+  if (isTenantIdentifierInUse(data, nextSettings.identifier, req.params.tenantId)) {
+    return res.status(409).json({
+      message: "Este identificador ja esta em uso por outra granja.",
+    });
+  }
+
+  tenantData.tenantSettings = nextSettings;
+  tenantData.farmProfile = mergeTenantSettingsIntoProfile({
+    ...tenantData.farmProfile,
+    farmName: nextSettings.name,
+    city: req.body.city ?? tenantData.farmProfile.city ?? "",
+    document: req.body.document ?? tenantData.farmProfile.document ?? "",
+    owner: req.body.owner ?? tenantData.farmProfile.owner ?? "",
+    address: req.body.address ?? tenantData.farmProfile.address ?? "",
+    location: req.body.location ?? tenantData.farmProfile.location ?? "",
+    notificationContact: req.body.notificationContact ?? tenantData.farmProfile.notificationContact ?? "",
+    updatedAt: new Date().toLocaleString("pt-BR"),
+  }, nextSettings);
+
+  data.tenants[req.params.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    tenant: getOwnerOverview(data).tenants.find((tenant) => tenant.tenantId === req.params.tenantId),
+    overview: getOwnerOverview(data),
+  });
 });
 
 app.post("/api/owner/tenants/:tenantId/renew", requireOwnerAccess, async (req, res) => {
@@ -437,6 +676,11 @@ app.post("/api/owner/tenants/:tenantId/archive", requireOwnerAccess, async (req,
   const tenantData = getTenantData(data, req.params.tenantId);
   tenantData.archivedAt = new Date().toISOString();
   tenantData.archivedReason = String(req.body.reason || "Excluida temporariamente pelo admin.").trim();
+  tenantData.tenantSettings = {
+    ...tenantData.tenantSettings,
+    status: TENANT_STATUS.INACTIVE,
+  };
+  tenantData.farmProfile = mergeTenantSettingsIntoProfile(tenantData.farmProfile, tenantData.tenantSettings);
 
   data.tenants[req.params.tenantId] = tenantData;
   await writeVacitechData(data);
@@ -460,6 +704,11 @@ app.post("/api/owner/tenants/:tenantId/restore", requireOwnerAccess, async (req,
   const tenantData = getTenantData(data, req.params.tenantId);
   delete tenantData.archivedAt;
   delete tenantData.archivedReason;
+  tenantData.tenantSettings = {
+    ...tenantData.tenantSettings,
+    status: TENANT_STATUS.ACTIVE,
+  };
+  tenantData.farmProfile = mergeTenantSettingsIntoProfile(tenantData.farmProfile, tenantData.tenantSettings);
 
   data.tenants[req.params.tenantId] = tenantData;
   await writeVacitechData(data);
@@ -487,6 +736,7 @@ app.delete("/api/owner/tenants/:tenantId", requireOwnerAccess, async (req, res) 
   data.accounts = data.accounts.filter((account) => account.tenantId !== req.params.tenantId);
   delete data.tenants[req.params.tenantId];
   await writeVacitechData(data);
+  await deleteTenantRecord(req.params.tenantId);
 
   res.json({
     success: true,
@@ -582,6 +832,12 @@ app.use("/api/vacitech", async (req, res, next) => {
     });
   }
 
+  if (isTenantInactive(tenantData)) {
+    return res.status(403).json({
+      message: "Esta granja esta inativa. Fale com o administrador geral do ImmuHen.",
+    });
+  }
+
   if (!subscription.active) {
     return res.status(402).json({
       message: "Assinatura vencida. Renove o acesso mensal para continuar usando.",
@@ -589,9 +845,22 @@ app.use("/api/vacitech", async (req, res, next) => {
     });
   }
 
-  req.account = accountContext.account;
-  req.tenantId = accountContext.account.tenantId;
+  req.account = normalizeAccountAccess(accountContext.account);
+  req.tenantId = req.account.tenantId;
   req.tenantData = tenantData;
+  syncTenantRecord(req.tenantId, tenantData).catch((error) => {
+    console.log(error.message || error);
+  });
+
+  const routePermissions = getVacitechRoutePermissions(req);
+
+  if (routePermissions.length > 0 && !hasAnyPermission(req.account, routePermissions)) {
+    return res.status(403).json({
+      message: "Seu usuario nao tem permissao para acessar este modulo.",
+      requiredPermissions: routePermissions,
+    });
+  }
+
   return next();
 });
 
@@ -602,7 +871,7 @@ app.use("/api/vacitech", async (req, res, next) => {
 app.get("/api/vacitech/state", async (req, res) => {
   const data = await readVacitechData();
   const tenantData = await syncOverdueVaccinationAlerts(data, req.tenantId);
-  res.json(tenantData);
+  res.json(filterTenantDataForAccount(tenantData, req.account));
 });
 
 app.get("/api/vacitech/notifications/status", async (req, res) => {
@@ -621,9 +890,9 @@ app.get("/api/vacitech/notifications/status", async (req, res) => {
 app.post("/api/vacitech/stock-access", async (req, res) => {
   const password = String(req.body.password || "").trim();
 
-  if (!isAdminAccount(req.account)) {
+  if (!hasPermission(req.account, ACCESS_MODULES.ESTOQUE)) {
     return res.status(403).json({
-      message: "Apenas administrador pode acessar o estoque.",
+      message: "Seu usuario nao tem permissao para acessar o estoque.",
     });
   }
 
@@ -644,16 +913,16 @@ app.post("/api/vacitech/stock-access", async (req, res) => {
 
   res.json({
     success: true,
-    role: req.account.role || "admin",
+    role: req.account.role || "ADMIN",
   });
 });
 
 app.post("/api/vacitech/chief-access", async (req, res) => {
   const password = String(req.body.password || "").trim();
 
-  if (!isAdminAccount(req.account)) {
+  if (!hasPermission(req.account, ACCESS_MODULES.ADMINISTRADOR)) {
     return res.status(403).json({
-      message: "Apenas administrador pode acessar este ambiente.",
+      message: "Seu usuario nao tem permissao para acessar este ambiente.",
     });
   }
 
@@ -671,7 +940,7 @@ app.post("/api/vacitech/chief-access", async (req, res) => {
 
   res.json({
     success: true,
-    role: req.account.role || "admin",
+    role: req.account.role || "ADMIN",
   });
 });
 
@@ -680,7 +949,7 @@ app.put("/api/vacitech/admin-access-password", async (req, res) => {
 
   if (!isAdminAccount(req.account)) {
     return res.status(403).json({
-      message: "Apenas administrador pode alterar a senha administrativa.",
+      message: "Apenas usuario ADMIN pode alterar a senha administrativa.",
     });
   }
 
@@ -707,7 +976,187 @@ app.put("/api/vacitech/admin-access-password", async (req, res) => {
   });
 });
 
+app.get("/api/vacitech/users", requireAdminUserManagement, async (req, res) => {
+  const data = await readVacitechData();
+
+  res.json({
+    users: getTenantAccounts(data, req.tenantId).map(sanitizeAccount),
+    roles: getRoleDefinitionsPayload(),
+    permissions: PERMISSION_DEFINITIONS,
+  });
+});
+
+app.post("/api/vacitech/users", requireAdminUserManagement, async (req, res) => {
+  const data = await readVacitechData();
+  const email = normalizeEmail(req.body.email);
+  const password = String(req.body.password || "");
+  const name = String(req.body.name || "").trim();
+  const role = normalizeRole(req.body.role || "FUNCIONARIO");
+  const permissions = normalizePermissions(req.body.permissions, role);
+
+  if (!name || !email || password.length < 6) {
+    return res.status(400).json({
+      message: "Informe nome, email e senha com pelo menos 6 caracteres.",
+    });
+  }
+
+  if (data.accounts.some((account) => normalizeEmail(account.email) === email)) {
+    return res.status(409).json({
+      message: "Este email ja esta cadastrado.",
+    });
+  }
+
+  const account = normalizeAccountAccess({
+    id: `account-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`,
+    tenantId: req.tenantId,
+    name,
+    email,
+    passwordHash: hashPassword(password),
+    role,
+    permissions,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  data.accounts.push(account);
+  await writeVacitechData(data);
+
+  res.status(201).json({
+    user: sanitizeAccount(account),
+    users: getTenantAccounts(data, req.tenantId).map(sanitizeAccount),
+  });
+});
+
+app.put("/api/vacitech/users/:userId", requireAdminUserManagement, async (req, res) => {
+  const data = await readVacitechData();
+  const accountIndex = data.accounts.findIndex((account) => (
+    account.id === req.params.userId &&
+    account.tenantId === req.tenantId
+  ));
+
+  if (accountIndex === -1) {
+    return res.status(404).json({
+      message: "Usuario nao encontrado.",
+    });
+  }
+
+  const currentAccount = normalizeAccountAccess(data.accounts[accountIndex]);
+  const email = normalizeEmail(req.body.email ?? currentAccount.email);
+  const name = String((req.body.name ?? currentAccount.name) || "").trim();
+  const role = normalizeRole(req.body.role ?? currentAccount.role);
+  const permissions = normalizePermissions(
+    Array.isArray(req.body.permissions) ? req.body.permissions : currentAccount.permissions,
+    role
+  );
+  const password = String(req.body.password || "");
+
+  if (!name || !email) {
+    return res.status(400).json({
+      message: "Informe nome e email.",
+    });
+  }
+
+  if (password && password.length < 6) {
+    return res.status(400).json({
+      message: "A nova senha precisa ter pelo menos 6 caracteres.",
+    });
+  }
+
+  const emailInUse = data.accounts.some((account) => (
+    account.id !== currentAccount.id &&
+    normalizeEmail(account.email) === email
+  ));
+
+  if (emailInUse) {
+    return res.status(409).json({
+      message: "Este email ja esta cadastrado em outro usuario.",
+    });
+  }
+
+  if (currentAccount.id === req.account.id && (role !== "ADMIN" || !permissions.includes(ACCESS_MODULES.ADMINISTRADOR))) {
+    return res.status(400).json({
+      message: "Voce nao pode remover seu proprio acesso de ADMIN.",
+    });
+  }
+
+  const updatedAccount = normalizeAccountAccess({
+    ...currentAccount,
+    name,
+    email,
+    role,
+    permissions,
+    passwordHash: password ? hashPassword(password) : currentAccount.passwordHash,
+    updatedAt: new Date().toISOString(),
+  });
+
+  data.accounts[accountIndex] = updatedAccount;
+  await writeVacitechData(data);
+
+  res.json({
+    user: sanitizeAccount(updatedAccount),
+    users: getTenantAccounts(data, req.tenantId).map(sanitizeAccount),
+  });
+});
+
+app.delete("/api/vacitech/users/:userId", requireAdminUserManagement, async (req, res) => {
+  const data = await readVacitechData();
+  const account = data.accounts.find((item) => (
+    item.id === req.params.userId &&
+    item.tenantId === req.tenantId
+  ));
+
+  if (!account) {
+    return res.status(404).json({
+      message: "Usuario nao encontrado.",
+    });
+  }
+
+  if (account.id === req.account.id) {
+    return res.status(400).json({
+      message: "Voce nao pode excluir seu proprio usuario.",
+    });
+  }
+
+  data.accounts = data.accounts.filter((item) => item.id !== account.id);
+  await writeVacitechData(data);
+
+  res.json({
+    success: true,
+    users: getTenantAccounts(data, req.tenantId).map(sanitizeAccount),
+  });
+});
+
 app.put("/api/vacitech/inventory-state", async (req, res) => {
+  const inventoryPermissionChecks = [
+    {
+      fields: ["vaccines", "vaccineEditRequests", "vaccineAuditLog"],
+      permissions: [ACCESS_MODULES.VACINAS, ACCESS_MODULES.ADMINISTRADOR],
+    },
+    {
+      fields: ["entries", "entryEditRequests"],
+      permissions: [ACCESS_MODULES.ENTRADAS, ACCESS_MODULES.FINANCEIRO, ACCESS_MODULES.ADMINISTRADOR],
+    },
+    {
+      fields: ["outputs"],
+      permissions: [ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.ADMINISTRADOR],
+    },
+    {
+      fields: ["stockAlertLevels"],
+      permissions: [ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.ADMINISTRADOR],
+    },
+  ];
+  const blockedField = inventoryPermissionChecks.find((check) => (
+    check.fields.some((field) => Object.prototype.hasOwnProperty.call(req.body || {}, field)) &&
+    !hasAnyPermission(req.account, check.permissions)
+  ));
+
+  if (blockedField) {
+    return res.status(403).json({
+      message: "Seu usuario nao tem permissao para alterar este modulo.",
+      requiredPermissions: blockedField.permissions,
+    });
+  }
+
   const data = await readVacitechData();
   const tenantData = getTenantData(data, req.tenantId);
 
@@ -744,6 +1193,7 @@ app.put("/api/vacitech/inventory-state", async (req, res) => {
       outputs: tenantData.outputs,
       stockAlertLevels: tenantData.stockAlertLevels,
       vaccineEditRequests: tenantData.vaccineEditRequests,
+      entryEditRequests: tenantData.entryEditRequests,
       vaccineAuditLog: tenantData.vaccineAuditLog,
     },
   });
@@ -778,17 +1228,89 @@ app.post("/api/vacitech/notifications/test", async (req, res) => {
 app.put("/api/vacitech/farm-profile", async (req, res) => {
   const data = await readVacitechData();
   const tenantData = getTenantData(data, req.tenantId);
+  const currentSettings = normalizeTenantSettings(req.tenantId, tenantData);
+  const nextSettings = normalizeTenantSettings(req.tenantId, {
+    ...tenantData,
+    tenantSettings: {
+      ...currentSettings,
+      name: req.body.farmName || req.body.name || currentSettings.name,
+      identifier: req.body.identifier || currentSettings.identifier,
+      domain: req.body.domain ?? currentSettings.domain,
+      logoDataUrl: req.body.logoDataUrl ?? currentSettings.logoDataUrl,
+      primaryColor: req.body.primaryColor ?? currentSettings.primaryColor,
+      secondaryColor: req.body.secondaryColor ?? currentSettings.secondaryColor,
+      status: currentSettings.status,
+    },
+  });
+
+  if (isTenantIdentifierInUse(data, nextSettings.identifier, req.tenantId)) {
+    return res.status(409).json({
+      message: "Este identificador ja esta em uso por outra granja.",
+    });
+  }
+
   const farmProfile = {
     ...tenantData.farmProfile,
     ...req.body,
+    ...mergeTenantSettingsIntoProfile(req.body, nextSettings),
     updatedAt: new Date().toLocaleString("pt-BR"),
   };
 
+  tenantData.tenantSettings = nextSettings;
   tenantData.farmProfile = farmProfile;
   data.tenants[req.tenantId] = tenantData;
   await writeVacitechData(data);
 
-  res.json({ farmProfile });
+  res.json({
+    farmProfile,
+    tenant: getTenantPublicConfig(req.tenantId, tenantData),
+  });
+});
+
+app.get("/api/vacitech/tenant-settings", async (req, res) => {
+  res.json({
+    tenant: getTenantPublicConfig(req.tenantId, req.tenantData),
+  });
+});
+
+app.put("/api/vacitech/tenant-settings", async (req, res) => {
+  if (!isAdminAccount(req.account)) {
+    return res.status(403).json({
+      message: "Apenas ADMIN da granja pode alterar as configuracoes da granja.",
+    });
+  }
+
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const nextSettings = normalizeTenantSettings(req.tenantId, {
+    ...tenantData,
+    tenantSettings: {
+      ...tenantData.tenantSettings,
+      name: req.body.name ?? tenantData.tenantSettings.name,
+      identifier: req.body.identifier ?? tenantData.tenantSettings.identifier,
+      domain: req.body.domain ?? tenantData.tenantSettings.domain,
+      logoDataUrl: req.body.logoDataUrl ?? tenantData.tenantSettings.logoDataUrl,
+      primaryColor: req.body.primaryColor ?? tenantData.tenantSettings.primaryColor,
+      secondaryColor: req.body.secondaryColor ?? tenantData.tenantSettings.secondaryColor,
+      status: tenantData.tenantSettings.status,
+    },
+  });
+
+  if (isTenantIdentifierInUse(data, nextSettings.identifier, req.tenantId)) {
+    return res.status(409).json({
+      message: "Este identificador ja esta em uso por outra granja.",
+    });
+  }
+
+  tenantData.tenantSettings = nextSettings;
+  tenantData.farmProfile = mergeTenantSettingsIntoProfile(tenantData.farmProfile, nextSettings);
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    tenant: getTenantPublicConfig(req.tenantId, tenantData),
+    farmProfile: tenantData.farmProfile,
+  });
 });
 
 app.get("/api/vacitech/vaccinators", async (req, res) => {
@@ -1773,6 +2295,12 @@ app.use("/birdlots", async (req, res, next) => {
       });
     }
 
+    if (isTenantInactive(tenantData)) {
+      return res.status(403).json({
+        message: "Esta granja esta inativa. Fale com o administrador geral do ImmuHen.",
+      });
+    }
+
     if (!subscription.active) {
       return res.status(402).json({
         message: "Assinatura vencida. Renove o acesso mensal para continuar usando.",
@@ -1780,8 +2308,16 @@ app.use("/birdlots", async (req, res, next) => {
       });
     }
 
-    req.account = accountContext.account;
-    req.tenantId = accountContext.account.tenantId;
+    req.account = normalizeAccountAccess(accountContext.account);
+
+    if (!hasPermission(req.account, ACCESS_MODULES.AVES)) {
+      return res.status(403).json({
+        message: "Seu usuario nao tem permissao para acessar aves.",
+      });
+    }
+
+    req.tenantId = req.account.tenantId;
+    await syncTenantRecord(req.tenantId, tenantData);
     next();
   } catch (error) {
     next(error);
@@ -2202,6 +2738,15 @@ function gerarCalendario(dataAlojamento) {
 function getEmptyTenantData() {
   return {
     farmProfile: {},
+    tenantSettings: {
+      name: "",
+      identifier: "",
+      domain: "",
+      logoDataUrl: "",
+      primaryColor: defaultTenantPrimaryColor,
+      secondaryColor: defaultTenantSecondaryColor,
+      status: TENANT_STATUS.ACTIVE,
+    },
     adminAccess: {
       passwordHash: "",
       updatedAt: "",
@@ -2309,16 +2854,20 @@ async function writeVacitechDataToFile(data) {
 }
 
 async function writeVacitechDataToDatabase(data) {
+  const normalizedData = normalizeVacitechData(data);
+
   await prisma.appState.upsert({
     where: { id: appStateId },
     update: {
-      data: normalizeVacitechData(data),
+      data: normalizedData,
     },
     create: {
       id: appStateId,
-      data: normalizeVacitechData(data),
+      data: normalizedData,
     },
   });
+
+  await syncTenantRecords(normalizedData);
 }
 
 function shouldUseDatabaseState() {
@@ -2331,7 +2880,9 @@ function normalizeVacitechData(data = {}) {
   return {
     ...getEmptyVacitechData(),
     ...migratedData,
-    accounts: Array.isArray(migratedData.accounts) ? migratedData.accounts : [],
+    accounts: Array.isArray(migratedData.accounts)
+      ? migratedData.accounts.map(normalizeAccountAccess)
+      : [],
     tenants: migratedData.tenants || {},
   };
 }
@@ -2348,7 +2899,8 @@ function migrateVacitechData(data = {}) {
     name: "Administrador",
     email: adminUser.email,
     passwordHash: hashPassword(adminUser.password),
-    role: "admin",
+    role: "ADMIN",
+    permissions: getDefaultPermissionsForRole("ADMIN"),
     createdAt: new Date().toISOString(),
   };
 
@@ -2359,6 +2911,10 @@ function migrateVacitechData(data = {}) {
       [tenantId]: {
         ...getEmptyTenantData(),
         farmProfile: data.farmProfile || {},
+        tenantSettings: normalizeTenantSettings(tenantId, {
+          tenantSettings: data.tenantSettings || {},
+          farmProfile: data.farmProfile || {},
+        }),
         vaccines: Array.isArray(data.vaccines) ? data.vaccines : [],
         entries: Array.isArray(data.entries) ? data.entries : [],
         outputs: Array.isArray(data.outputs) ? data.outputs : [],
@@ -2390,57 +2946,413 @@ function getDefaultTenantData(data) {
 }
 
 function getTenantData(data, tenantId) {
+  const rawTenantData = data.tenants?.[tenantId] || {};
+
   return {
     ...getEmptyTenantData(),
-    ...(data.tenants?.[tenantId] || {}),
-    farmProfile: data.tenants?.[tenantId]?.farmProfile || {},
-    adminAccess: data.tenants?.[tenantId]?.adminAccess && typeof data.tenants[tenantId].adminAccess === "object"
-      ? data.tenants[tenantId].adminAccess
+    ...rawTenantData,
+    farmProfile: rawTenantData.farmProfile || {},
+    tenantSettings: normalizeTenantSettings(tenantId, rawTenantData),
+    adminAccess: rawTenantData.adminAccess && typeof rawTenantData.adminAccess === "object"
+      ? rawTenantData.adminAccess
       : { passwordHash: "", updatedAt: "" },
-    vaccines: Array.isArray(data.tenants?.[tenantId]?.vaccines)
-      ? data.tenants[tenantId].vaccines
+    vaccines: Array.isArray(rawTenantData.vaccines)
+      ? rawTenantData.vaccines
       : [],
-    entries: Array.isArray(data.tenants?.[tenantId]?.entries)
-      ? data.tenants[tenantId].entries
+    entries: Array.isArray(rawTenantData.entries)
+      ? rawTenantData.entries
       : [],
-    outputs: Array.isArray(data.tenants?.[tenantId]?.outputs)
-      ? data.tenants[tenantId].outputs
+    outputs: Array.isArray(rawTenantData.outputs)
+      ? rawTenantData.outputs
       : [],
-    stockAlertLevels: data.tenants?.[tenantId]?.stockAlertLevels && typeof data.tenants[tenantId].stockAlertLevels === "object" && !Array.isArray(data.tenants[tenantId].stockAlertLevels)
-      ? data.tenants[tenantId].stockAlertLevels
+    stockAlertLevels: rawTenantData.stockAlertLevels && typeof rawTenantData.stockAlertLevels === "object" && !Array.isArray(rawTenantData.stockAlertLevels)
+      ? rawTenantData.stockAlertLevels
       : {},
-    vaccineEditRequests: Array.isArray(data.tenants?.[tenantId]?.vaccineEditRequests)
-      ? data.tenants[tenantId].vaccineEditRequests
+    vaccineEditRequests: Array.isArray(rawTenantData.vaccineEditRequests)
+      ? rawTenantData.vaccineEditRequests
       : [],
-    entryEditRequests: Array.isArray(data.tenants?.[tenantId]?.entryEditRequests)
-      ? data.tenants[tenantId].entryEditRequests
+    entryEditRequests: Array.isArray(rawTenantData.entryEditRequests)
+      ? rawTenantData.entryEditRequests
       : [],
-    vaccineAuditLog: Array.isArray(data.tenants?.[tenantId]?.vaccineAuditLog)
-      ? data.tenants[tenantId].vaccineAuditLog
+    vaccineAuditLog: Array.isArray(rawTenantData.vaccineAuditLog)
+      ? rawTenantData.vaccineAuditLog
       : [],
-    vaccinators: Array.isArray(data.tenants?.[tenantId]?.vaccinators)
-      ? data.tenants[tenantId].vaccinators
+    vaccinators: Array.isArray(rawTenantData.vaccinators)
+      ? rawTenantData.vaccinators
       : [],
-    schedules: Array.isArray(data.tenants?.[tenantId]?.schedules)
-      ? data.tenants[tenantId].schedules
+    schedules: Array.isArray(rawTenantData.schedules)
+      ? rawTenantData.schedules
       : [],
-    requests: Array.isArray(data.tenants?.[tenantId]?.requests)
-      ? data.tenants[tenantId].requests
+    requests: Array.isArray(rawTenantData.requests)
+      ? rawTenantData.requests
       : [],
-    completedVaccinations: Array.isArray(data.tenants?.[tenantId]?.completedVaccinations)
-      ? data.tenants[tenantId].completedVaccinations
+    completedVaccinations: Array.isArray(rawTenantData.completedVaccinations)
+      ? rawTenantData.completedVaccinations
       : [],
-    notifications: Array.isArray(data.tenants?.[tenantId]?.notifications)
-      ? data.tenants[tenantId].notifications
+    notifications: Array.isArray(rawTenantData.notifications)
+      ? rawTenantData.notifications
       : [],
-    notificationOutbox: Array.isArray(data.tenants?.[tenantId]?.notificationOutbox)
-      ? data.tenants[tenantId].notificationOutbox
+    notificationOutbox: Array.isArray(rawTenantData.notificationOutbox)
+      ? rawTenantData.notificationOutbox
       : [],
-    subscription: data.tenants?.[tenantId]?.subscription || createInitialSubscription(),
-    payments: Array.isArray(data.tenants?.[tenantId]?.payments)
-      ? data.tenants[tenantId].payments
+    subscription: rawTenantData.subscription || createInitialSubscription(),
+    payments: Array.isArray(rawTenantData.payments)
+      ? rawTenantData.payments
       : [],
   };
+}
+
+function sanitizeTenantIdentifier(value, fallback = "") {
+  const identifier = String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return identifier || String(fallback || "").trim().toLowerCase() || `granja-${Date.now()}`;
+}
+
+function createTenantIdentifier(name, tenantId) {
+  const base = sanitizeTenantIdentifier(name, tenantId);
+
+  return base || sanitizeTenantIdentifier(tenantId);
+}
+
+function normalizeHexColor(value, fallback) {
+  const color = String(value || "").trim();
+
+  return /^#[0-9a-f]{6}$/i.test(color)
+    ? color.toLowerCase()
+    : fallback;
+}
+
+function normalizeTenantStatus(value) {
+  const status = String(value || TENANT_STATUS.ACTIVE).trim().toUpperCase();
+
+  return status === TENANT_STATUS.INACTIVE
+    ? TENANT_STATUS.INACTIVE
+    : TENANT_STATUS.ACTIVE;
+}
+
+function normalizeTenantSettings(tenantId, tenantData = {}) {
+  const settings = tenantData.tenantSettings && typeof tenantData.tenantSettings === "object"
+    ? tenantData.tenantSettings
+    : {};
+  const farmProfile = tenantData.farmProfile && typeof tenantData.farmProfile === "object"
+    ? tenantData.farmProfile
+    : {};
+
+  return {
+    name: String(settings.name || farmProfile.farmName || tenantId || "Granja").trim(),
+    identifier: sanitizeTenantIdentifier(settings.identifier || farmProfile.identifier, tenantId),
+    domain: String(settings.domain || farmProfile.domain || "").trim(),
+    logoDataUrl: String(settings.logoDataUrl || farmProfile.logoDataUrl || "").trim(),
+    primaryColor: normalizeHexColor(settings.primaryColor || farmProfile.primaryColor, defaultTenantPrimaryColor),
+    secondaryColor: normalizeHexColor(settings.secondaryColor || farmProfile.secondaryColor, defaultTenantSecondaryColor),
+    status: normalizeTenantStatus(settings.status || farmProfile.status || (tenantData.archivedAt ? TENANT_STATUS.INACTIVE : TENANT_STATUS.ACTIVE)),
+  };
+}
+
+function getTenantPublicConfig(tenantId, tenantData = {}) {
+  const settings = normalizeTenantSettings(tenantId, tenantData);
+
+  return {
+    tenantId,
+    ...settings,
+  };
+}
+
+function isTenantIdentifierInUse(data, identifier, excludeTenantId = "") {
+  const normalizedIdentifier = sanitizeTenantIdentifier(identifier);
+
+  return Object.entries(data.tenants || {}).some(([tenantId]) => (
+    tenantId !== excludeTenantId &&
+    normalizeTenantSettings(tenantId, getTenantData(data, tenantId)).identifier === normalizedIdentifier
+  ));
+}
+
+function mergeTenantSettingsIntoProfile(profile = {}, settings = {}) {
+  return {
+    ...profile,
+    farmName: settings.name || profile.farmName || "",
+    identifier: settings.identifier || profile.identifier || "",
+    domain: settings.domain || profile.domain || "",
+    logoDataUrl: settings.logoDataUrl || profile.logoDataUrl || "",
+    primaryColor: settings.primaryColor || profile.primaryColor || defaultTenantPrimaryColor,
+    secondaryColor: settings.secondaryColor || profile.secondaryColor || defaultTenantSecondaryColor,
+    status: settings.status || profile.status || TENANT_STATUS.ACTIVE,
+  };
+}
+
+function isTenantInactive(tenantData = {}) {
+  return normalizeTenantSettings("", tenantData).status === TENANT_STATUS.INACTIVE;
+}
+
+async function syncTenantRecord(tenantId, tenantData) {
+  if (!shouldUseDatabaseState() || !tenantId) {
+    return;
+  }
+
+  const settings = normalizeTenantSettings(tenantId, tenantData);
+
+  try {
+    await prisma.tenant.upsert({
+      where: { id: tenantId },
+      update: {
+        name: settings.name,
+        identifier: settings.identifier,
+        domain: settings.domain || null,
+        logoDataUrl: settings.logoDataUrl || null,
+        primaryColor: settings.primaryColor,
+        secondaryColor: settings.secondaryColor,
+        status: settings.status,
+      },
+      create: {
+        id: tenantId,
+        name: settings.name,
+        identifier: settings.identifier,
+        domain: settings.domain || null,
+        logoDataUrl: settings.logoDataUrl || null,
+        primaryColor: settings.primaryColor,
+        secondaryColor: settings.secondaryColor,
+        status: settings.status,
+      },
+    });
+  } catch (error) {
+    console.log(`Tenant sync ignored for ${tenantId}: ${error.message || error}`);
+  }
+}
+
+async function syncTenantRecords(data = {}) {
+  if (!shouldUseDatabaseState()) {
+    return;
+  }
+
+  await Promise.all(
+    Object.entries(data.tenants || {}).map(([tenantId, tenantData]) => (
+      syncTenantRecord(tenantId, getTenantData(data, tenantId))
+    ))
+  );
+}
+
+async function deleteTenantRecord(tenantId) {
+  if (!shouldUseDatabaseState() || !tenantId) {
+    return;
+  }
+
+  try {
+    await prisma.tenant.delete({
+      where: { id: tenantId },
+    });
+  } catch (error) {
+    console.log(`Tenant delete ignored for ${tenantId}: ${error.message || error}`);
+  }
+}
+
+function normalizeRole(role) {
+  const rawRole = String(role || "FUNCIONARIO").trim();
+  const upperRole = rawRole.toUpperCase();
+
+  if (ROLE_DEFINITIONS[upperRole]) {
+    return upperRole;
+  }
+
+  return LEGACY_ROLE_ALIASES[rawRole.toLowerCase()] || "FUNCIONARIO";
+}
+
+function getDefaultPermissionsForRole(role) {
+  const normalizedRole = normalizeRole(role);
+
+  return [...(ROLE_DEFINITIONS[normalizedRole]?.permissions || ROLE_DEFINITIONS.FUNCIONARIO.permissions)];
+}
+
+function normalizePermissions(permissions, role) {
+  const normalizedRole = normalizeRole(role);
+
+  if (normalizedRole === "ADMIN") {
+    return getDefaultPermissionsForRole("ADMIN");
+  }
+
+  const source = Array.isArray(permissions) && permissions.length > 0
+    ? permissions
+    : getDefaultPermissionsForRole(normalizedRole);
+
+  return Array.from(new Set(
+    source
+      .map((permission) => String(permission || "").trim().toUpperCase())
+      .filter((permission) => ALL_ACCESS_MODULES.includes(permission))
+  ));
+}
+
+function normalizeAccountAccess(account) {
+  if (!account) {
+    return null;
+  }
+
+  const role = normalizeRole(account.role || "FUNCIONARIO");
+
+  return {
+    ...account,
+    role,
+    permissions: normalizePermissions(account.permissions, role),
+  };
+}
+
+function getTenantAccounts(data, tenantId) {
+  return (data.accounts || [])
+    .filter((account) => account.tenantId === tenantId)
+    .map(normalizeAccountAccess);
+}
+
+function getRoleDefinitionsPayload() {
+  return Object.entries(ROLE_DEFINITIONS).map(([role, definition]) => ({
+    role,
+    label: definition.label,
+    permissions: [...definition.permissions],
+  }));
+}
+
+function hasPermission(account, permission) {
+  const normalizedAccount = normalizeAccountAccess(account);
+
+  if (!normalizedAccount) {
+    return false;
+  }
+
+  if (normalizedAccount.role === "ADMIN") {
+    return true;
+  }
+
+  return normalizedAccount.permissions.includes(String(permission || "").trim().toUpperCase());
+}
+
+function hasAnyPermission(account, permissions = []) {
+  return permissions.some((permission) => hasPermission(account, permission));
+}
+
+function getVacitechRoutePermissions(req) {
+  const requestPath = req.path || "";
+
+  if (requestPath === "/state") {
+    return [];
+  }
+
+  if (requestPath.startsWith("/users")) {
+    return [ACCESS_MODULES.ADMINISTRADOR];
+  }
+
+  if (requestPath === "/chief-access" || requestPath === "/admin-access-password") {
+    return [ACCESS_MODULES.ADMINISTRADOR];
+  }
+
+  if (requestPath === "/stock-access") {
+    return [ACCESS_MODULES.ESTOQUE];
+  }
+
+  if (requestPath.startsWith("/stock-alerts")) {
+    return [ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.ENTRADAS];
+  }
+
+  if (requestPath === "/inventory-state") {
+    return [
+      ACCESS_MODULES.VACINAS,
+      ACCESS_MODULES.ENTRADAS,
+      ACCESS_MODULES.ESTOQUE,
+      ACCESS_MODULES.FINANCEIRO,
+      ACCESS_MODULES.PROGRAMA,
+      ACCESS_MODULES.ADMINISTRADOR,
+    ];
+  }
+
+  if (requestPath === "/farm-profile" || requestPath === "/tenant-settings") {
+    return [ACCESS_MODULES.CONFIGURACOES];
+  }
+
+  if (requestPath.startsWith("/vaccinators")) {
+    return [ACCESS_MODULES.VACINADORES];
+  }
+
+  if (requestPath.startsWith("/schedules")) {
+    return [ACCESS_MODULES.PROGRAMA];
+  }
+
+  if (requestPath.startsWith("/requests")) {
+    return [ACCESS_MODULES.SOLICITACOES, ACCESS_MODULES.PROGRAMA];
+  }
+
+  if (requestPath.startsWith("/notifications")) {
+    return [ACCESS_MODULES.CONFIGURACOES, ACCESS_MODULES.SOLICITACOES, ACCESS_MODULES.ESTOQUE];
+  }
+
+  return [];
+}
+
+function filterTenantDataForAccount(tenantData, account) {
+  const filteredData = {
+    ...tenantData,
+    adminAccess: {
+      updatedAt: tenantData?.adminAccess?.updatedAt || "",
+    },
+  };
+
+  if (!hasPermission(account, ACCESS_MODULES.VACINAS)) {
+    filteredData.vaccines = [];
+    filteredData.vaccineEditRequests = [];
+  }
+
+  if (!hasAnyPermission(account, [ACCESS_MODULES.ENTRADAS, ACCESS_MODULES.FINANCEIRO, ACCESS_MODULES.ADMINISTRADOR])) {
+    filteredData.entries = [];
+    filteredData.entryEditRequests = [];
+  }
+
+  if (!hasAnyPermission(account, [ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.RELATORIOS, ACCESS_MODULES.ADMINISTRADOR])) {
+    filteredData.outputs = [];
+  }
+
+  if (!hasPermission(account, ACCESS_MODULES.ESTOQUE)) {
+    filteredData.stockAlertLevels = {};
+  }
+
+  if (!hasAnyPermission(account, [ACCESS_MODULES.RELATORIOS, ACCESS_MODULES.ADMINISTRADOR])) {
+    filteredData.vaccineAuditLog = [];
+    filteredData.completedVaccinations = [];
+  }
+
+  if (!hasPermission(account, ACCESS_MODULES.VACINADORES)) {
+    filteredData.vaccinators = [];
+  }
+
+  if (!hasPermission(account, ACCESS_MODULES.PROGRAMA)) {
+    filteredData.schedules = [];
+  }
+
+  if (!hasAnyPermission(account, [ACCESS_MODULES.SOLICITACOES, ACCESS_MODULES.PROGRAMA])) {
+    filteredData.requests = [];
+  }
+
+  if (!hasAnyPermission(account, [ACCESS_MODULES.CONFIGURACOES, ACCESS_MODULES.SOLICITACOES, ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.ADMINISTRADOR])) {
+    filteredData.notifications = [];
+    filteredData.notificationOutbox = [];
+  }
+
+  if (!hasAnyPermission(account, [ACCESS_MODULES.FINANCEIRO, ACCESS_MODULES.ADMINISTRADOR])) {
+    filteredData.payments = [];
+  }
+
+  return filteredData;
+}
+
+function requireAdminUserManagement(req, res, next) {
+  if (!isAdminAccount(req.account)) {
+    return res.status(403).json({
+      message: "Apenas usuario ADMIN pode gerenciar usuarios e permissoes.",
+    });
+  }
+
+  return next();
 }
 
 function hashPassword(password) {
@@ -2469,9 +3381,7 @@ function verifyAdminAccessPassword(password, account, tenantData) {
 }
 
 function isAdminAccount(account) {
-  return ["admin", "owner", "chefe"].includes(
-    String(account?.role || "").trim().toLowerCase()
-  );
+  return normalizeAccountAccess(account)?.role === "ADMIN";
 }
 
 function hashPasswordWithSecret(password, secret) {
@@ -2482,10 +3392,13 @@ function hashPasswordWithSecret(password, secret) {
 }
 
 function createAuthToken(account) {
+  const normalizedAccount = normalizeAccountAccess(account);
   const payload = Buffer.from(JSON.stringify({
-    accountId: account.id,
-    tenantId: account.tenantId,
-    email: account.email,
+    accessType: "TENANT_USER",
+    accountId: normalizedAccount.id,
+    tenantId: normalizedAccount.tenantId,
+    email: normalizedAccount.email,
+    role: normalizedAccount.role,
   })).toString("base64url");
   const signature = crypto
     .createHmac("sha256", authSecret)
@@ -2522,7 +3435,7 @@ function getRequestAccount(req, data) {
       item.tenantId === parsedPayload.tenantId
     ));
 
-    return account ? { account } : null;
+    return account ? { account: normalizeAccountAccess(account) } : null;
   } catch (error) {
     return null;
   }
@@ -3870,6 +4783,7 @@ function getPublicVaccinatorPortalData(data, vaccinator) {
 
 function createOwnerToken() {
   const payload = Buffer.from(JSON.stringify({
+    accessType: "GLOBAL_ADMIN",
     role: "owner",
     createdAt: Date.now(),
   })).toString("base64url");
@@ -3911,14 +4825,18 @@ function requireOwnerAccess(req, res, next) {
 }
 
 function sanitizeAccount(account) {
+  const normalizedAccount = normalizeAccountAccess(account);
+
   return {
-    id: account.id,
-    tenantId: account.tenantId,
-    name: account.name,
-    email: account.email,
-    role: account.role,
-    createdAt: account.createdAt,
-    passwordResetAt: account.passwordResetAt || "",
+    id: normalizedAccount.id,
+    tenantId: normalizedAccount.tenantId,
+    name: normalizedAccount.name,
+    email: normalizedAccount.email,
+    role: normalizedAccount.role,
+    permissions: normalizedAccount.permissions,
+    createdAt: normalizedAccount.createdAt || "",
+    updatedAt: normalizedAccount.updatedAt || "",
+    passwordResetAt: normalizedAccount.passwordResetAt || "",
   };
 }
 
@@ -3931,6 +4849,7 @@ function getOwnerOverview(data) {
 
     return {
       tenantId,
+      tenant: getTenantPublicConfig(tenantId, tenantData),
       farmProfile: tenantData.farmProfile,
       subscription: getSubscriptionStatus(tenantData.subscription),
       archivedAt: tenantData.archivedAt || "",

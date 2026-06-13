@@ -5,9 +5,11 @@ import {
   getFarmProfile,
   normalizeImportantContacts,
   normalizeRanches,
+  readJson,
   writeJson,
 } from "../utils/vacitechStorage";
 import {
+  fetchTenantSettingsApi,
   fetchNotificationStatusApi,
   saveFarmProfileApi,
   sendNotificationTestApi,
@@ -57,6 +59,7 @@ function getMapsLink(location) {
 
 function FarmProfile() {
   const savedProfile = getFarmProfile();
+  const savedTenantSettings = readJson("tenantSettings", {});
   const [form, setForm] = useState({
     farmName: savedProfile.farmName || "",
     city: savedProfile.city || "",
@@ -66,6 +69,11 @@ function FarmProfile() {
     document: savedProfile.document || "",
     owner: savedProfile.owner || savedProfile.responsible || "",
     logoDataUrl: savedProfile.logoDataUrl || "",
+    identifier: savedTenantSettings.identifier || savedProfile.identifier || "",
+    domain: savedTenantSettings.domain || savedProfile.domain || "",
+    primaryColor: savedTenantSettings.primaryColor || savedProfile.primaryColor || "#16a34a",
+    secondaryColor: savedTenantSettings.secondaryColor || savedProfile.secondaryColor || "#dcfce7",
+    status: savedTenantSettings.status || savedProfile.status || "ACTIVE",
     ranches: normalizeRanches(savedProfile.ranches).length
       ? normalizeRanches(savedProfile.ranches)
       : DEFAULT_RANCHES,
@@ -88,6 +96,35 @@ function FarmProfile() {
     }
 
     loadNotificationStatus();
+  }, []);
+
+  useEffect(() => {
+    async function loadTenantSettings() {
+      try {
+        const data = await fetchTenantSettingsApi();
+        const tenant = data.tenant || {};
+
+        if (!tenant.tenantId) {
+          return;
+        }
+
+        writeJson("tenantSettings", tenant);
+        setForm((currentForm) => ({
+          ...currentForm,
+          farmName: currentForm.farmName || tenant.name || "",
+          logoDataUrl: currentForm.logoDataUrl || tenant.logoDataUrl || "",
+          identifier: tenant.identifier || currentForm.identifier,
+          domain: tenant.domain || currentForm.domain,
+          primaryColor: tenant.primaryColor || currentForm.primaryColor,
+          secondaryColor: tenant.secondaryColor || currentForm.secondaryColor,
+          status: tenant.status || currentForm.status,
+        }));
+      } catch (error) {
+        console.log(error);
+      }
+    }
+
+    loadTenantSettings();
   }, []);
 
   function updateForm(field, value) {
@@ -209,6 +246,11 @@ function FarmProfile() {
       document: form.document.trim(),
       owner: form.owner.trim(),
       logoDataUrl: form.logoDataUrl,
+      identifier: form.identifier.trim(),
+      domain: form.domain.trim(),
+      primaryColor: form.primaryColor,
+      secondaryColor: form.secondaryColor,
+      status: form.status,
       ranches: normalizeRanches(form.ranches),
       importantContacts: normalizeImportantContacts(form.importantContacts),
       updatedAt: new Date().toLocaleString("pt-BR"),
@@ -218,6 +260,15 @@ function FarmProfile() {
 
     try {
       const apiProfile = await saveFarmProfileApi(farmProfile);
+      const tenantSettings = {
+        name: farmProfile.farmName,
+        logoDataUrl: apiProfile.logoDataUrl || farmProfile.logoDataUrl,
+        identifier: apiProfile.identifier || farmProfile.identifier,
+        domain: apiProfile.domain || farmProfile.domain,
+        primaryColor: apiProfile.primaryColor || farmProfile.primaryColor,
+        secondaryColor: apiProfile.secondaryColor || farmProfile.secondaryColor,
+        status: apiProfile.status || farmProfile.status,
+      };
       const syncedProfile = {
         ...farmProfile,
         ...apiProfile,
@@ -225,6 +276,7 @@ function FarmProfile() {
       };
 
       writeJson("farmProfile", syncedProfile);
+      writeJson("tenantSettings", tenantSettings);
     } catch (error) {
       console.log(error);
     }
@@ -331,6 +383,54 @@ function FarmProfile() {
                   </div>
                 </div>
               </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                  Cor principal
+                  <input
+                    type="color"
+                    value={form.primaryColor}
+                    onChange={(event) => updateForm("primaryColor", event.target.value)}
+                    className="h-12 w-full rounded-xl border border-green-100 bg-green-50 p-1"
+                  />
+                </label>
+
+                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                  Cor secundaria
+                  <input
+                    type="color"
+                    value={form.secondaryColor}
+                    onChange={(event) => updateForm("secondaryColor", event.target.value)}
+                    className="h-12 w-full rounded-xl border border-green-100 bg-green-50 p-1"
+                  />
+                </label>
+
+                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                  Identificador
+                  <input
+                    type="text"
+                    value={form.identifier}
+                    onChange={(event) => updateForm("identifier", event.target.value)}
+                    placeholder="granja-katayama"
+                    className="rounded-xl border border-green-100 bg-green-50 p-3 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
+                  />
+                </label>
+
+                <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                  Dominio
+                  <input
+                    type="text"
+                    value={form.domain}
+                    onChange={(event) => updateForm("domain", event.target.value)}
+                    placeholder="katayama.immuhen.com.br"
+                    className="rounded-xl border border-green-100 bg-green-50 p-3 text-zinc-900 outline-none transition focus:border-green-500 focus:bg-white"
+                  />
+                </label>
+              </div>
+
+              <p className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-4 text-sm font-semibold text-zinc-700">
+                Status da granja: {form.status === "INACTIVE" ? "Inativa" : "Ativa"}
+              </p>
             </section>
 
             <section className="rounded-2xl border border-green-100 bg-white p-5 shadow-sm md:p-6">
@@ -624,6 +724,32 @@ function FarmProfile() {
               <div className="rounded-xl border border-green-100 p-4">
                 <p className="font-bold text-zinc-900">Notificacoes</p>
                 <p className="mt-1 overflow-hidden break-words text-zinc-600">{form.notificationContact || "Nao informado"}</p>
+              </div>
+
+              <div className="rounded-xl border border-green-100 p-4">
+                <p className="font-bold text-zinc-900">Identificador</p>
+                <p className="mt-1 overflow-hidden break-words text-zinc-600">{form.identifier || "Nao informado"}</p>
+              </div>
+
+              <div className="rounded-xl border border-green-100 p-4">
+                <p className="font-bold text-zinc-900">Dominio</p>
+                <p className="mt-1 overflow-hidden break-words text-zinc-600">{form.domain || "Nao informado"}</p>
+              </div>
+
+              <div className="rounded-xl border border-green-100 p-4">
+                <p className="font-bold text-zinc-900">Cores</p>
+                <div className="mt-2 flex gap-2">
+                  <span
+                    className="h-7 w-7 rounded-full border border-green-100"
+                    style={{ backgroundColor: form.primaryColor }}
+                    title="Cor principal"
+                  />
+                  <span
+                    className="h-7 w-7 rounded-full border border-green-100"
+                    style={{ backgroundColor: form.secondaryColor }}
+                    title="Cor secundaria"
+                  />
+                </div>
               </div>
             </div>
 

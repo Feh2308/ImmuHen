@@ -112,6 +112,7 @@ function Welcome() {
       try {
         const state = await fetchSharedStateApi();
         const apiProfile = state?.farmProfile;
+        const apiTenantSettings = state?.tenantSettings;
 
         if (active && apiProfile) {
           const currentProfile = getFarmProfile();
@@ -122,6 +123,11 @@ function Welcome() {
           };
 
           writeJson("farmProfile", syncedProfile);
+
+          if (apiTenantSettings) {
+            writeJson("tenantSettings", apiTenantSettings);
+          }
+
           setFarmProfile(syncedProfile);
         }
       } catch (error) {

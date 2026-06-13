@@ -1,22 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { ACCESS_MODULES, canAccessAny } from "../utils/permissions";
 import { getFarmProfile } from "../utils/vacitechStorage";
 
 function Sidebar() {
   const location = useLocation();
   const [farmProfile, setFarmProfile] = useState(getFarmProfile);
   const links = [
-    { to: "/home", label: "Home" },
-    { to: "/Aves", label: "Aves" },
-    { to: "/vacinas", label: "Vacinas" },
-    { to: "/entradas", label: "Entradas" },
-    { to: "/estoque", label: "Estoque" },
-    { to: "/administrador", label: "Administrador" },
-    { to: "/agenda", label: "Programa" },
-    { to: "/vaccinators", label: "Vacinadores" },
-    { to: "/solicitacoes", label: "Solicitacoes" },
-    { to: "/perfil", label: "Perfil da Granja" },
+    { to: "/home", label: "Home", permissions: [ACCESS_MODULES.DASHBOARD] },
+    { to: "/Aves", label: "Aves", permissions: [ACCESS_MODULES.AVES] },
+    { to: "/vacinas", label: "Vacinas", permissions: [ACCESS_MODULES.VACINAS] },
+    { to: "/entradas", label: "Entradas", permissions: [ACCESS_MODULES.ENTRADAS] },
+    { to: "/estoque", label: "Estoque", permissions: [ACCESS_MODULES.ESTOQUE] },
+    { to: "/administrador", label: "Administrador", permissions: [ACCESS_MODULES.ADMINISTRADOR] },
+    { to: "/agenda", label: "Programa", permissions: [ACCESS_MODULES.PROGRAMA] },
+    { to: "/vaccinators", label: "Vacinadores", permissions: [ACCESS_MODULES.VACINADORES] },
+    { to: "/solicitacoes", label: "Solicitacoes", permissions: [ACCESS_MODULES.SOLICITACOES] },
+    { to: "/perfil", label: "Perfil da Granja", permissions: [ACCESS_MODULES.CONFIGURACOES] },
   ];
+  const visibleLinks = links.filter((link) => canAccessAny(link.permissions));
 
   useEffect(() => {
     function refreshProfile() {
@@ -70,7 +72,7 @@ function Sidebar() {
       </div>
 
         <nav className="flex gap-2 overflow-x-auto pb-1 xl:pb-0">
-          {links.map((link) => (
+          {visibleLinks.map((link) => (
             <Link key={link.to} to={link.to} className={linkClass(link.to)}>
               {link.label}
             </Link>

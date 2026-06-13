@@ -9,6 +9,10 @@ function getAuthToken() {
   return localStorage.getItem("token") || "";
 }
 
+function getOwnerToken() {
+  return localStorage.getItem("ownerToken") || "";
+}
+
 async function apiRequest(path, options = {}) {
   const token = getAuthToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -27,6 +31,25 @@ async function apiRequest(path, options = {}) {
       : error.message || "Erro ao acessar a API ImmuHen";
 
     throw new Error(message);
+  }
+
+  return response.json();
+}
+
+async function ownerApiRequest(path, options = {}) {
+  const token = getOwnerToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || "Erro ao acessar o admin geral ImmuHen");
   }
 
   return response.json();
@@ -240,6 +263,105 @@ export async function updateAdminAccessPasswordApi(password) {
   return apiRequest("/api/vacitech/admin-access-password", {
     method: "PUT",
     body: JSON.stringify({ password }),
+  });
+}
+
+export async function fetchTenantSettingsApi() {
+  return apiRequest("/api/vacitech/tenant-settings");
+}
+
+export async function saveTenantSettingsApi(settings) {
+  return apiRequest("/api/vacitech/tenant-settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+}
+
+export async function ownerLoginApi(password) {
+  const data = await ownerApiRequest("/api/owner/login", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+
+  localStorage.setItem("ownerToken", data.token || "");
+  return data;
+}
+
+export function ownerLogout() {
+  localStorage.removeItem("ownerToken");
+}
+
+export async function fetchOwnerOverviewApi() {
+  return ownerApiRequest("/api/owner/overview");
+}
+
+export async function createOwnerTenantApi(tenant) {
+  return ownerApiRequest("/api/owner/tenants", {
+    method: "POST",
+    body: JSON.stringify(tenant),
+  });
+}
+
+export async function updateOwnerTenantApi(tenantId, tenant) {
+  return ownerApiRequest(`/api/owner/tenants/${tenantId}`, {
+    method: "PUT",
+    body: JSON.stringify(tenant),
+  });
+}
+
+export async function renewOwnerTenantApi(tenantId, months = 1) {
+  return ownerApiRequest(`/api/owner/tenants/${tenantId}/renew`, {
+    method: "POST",
+    body: JSON.stringify({ months }),
+  });
+}
+
+export async function expireOwnerTenantApi(tenantId) {
+  return ownerApiRequest(`/api/owner/tenants/${tenantId}/expire`, {
+    method: "POST",
+  });
+}
+
+export async function archiveOwnerTenantApi(tenantId, reason = "") {
+  return ownerApiRequest(`/api/owner/tenants/${tenantId}/archive`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function restoreOwnerTenantApi(tenantId) {
+  return ownerApiRequest(`/api/owner/tenants/${tenantId}/restore`, {
+    method: "POST",
+  });
+}
+
+export async function deleteOwnerTenantApi(tenantId) {
+  return ownerApiRequest(`/api/owner/tenants/${tenantId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchUsersApi() {
+  return apiRequest("/api/vacitech/users");
+}
+
+export async function createUserApi(user) {
+  return apiRequest("/api/vacitech/users", {
+    method: "POST",
+    body: JSON.stringify(user),
+  });
+}
+
+export async function updateUserApi(id, user) {
+  return apiRequest(`/api/vacitech/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(user),
+  });
+}
+
+export async function deleteUserApi(id) {
+  return apiRequest(`/api/vacitech/users/${id}`, {
+    method: "DELETE",
   });
 }
 

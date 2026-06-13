@@ -52,6 +52,7 @@ model BirdLot {
   observacoes     String   @default("")
   status          String
   createdAt       DateTime @default(now())
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
 }
@@ -61,4 +62,78 @@ model AppState {
   data      Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AppUser {
+  id              String           @id
+  tenantId        String
+  name            String
+  email           String           @unique
+  passwordHash    String
+  roleId          String?
+  permissions     Json?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role            Role?            @relation(fields: [roleId], references: [id])
+  userPermissions UserPermission[]
+
+  @@index([tenantId])
+  @@index([roleId])
+}
+
+model Tenant {
+  id             String    @id
+  name           String
+  identifier     String    @unique
+  domain         String?
+  logoDataUrl    String?
+  primaryColor   String    @default("#16a34a")
+  secondaryColor String    @default("#dcfce7")
+  status         String    @default("ACTIVE")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  users          AppUser[]
+  birdLots       BirdLot[]
+}
+
+model Role {
+  id              String           @id
+  name            String           @unique
+  description     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  users           AppUser[]
+  rolePermissions RolePermission[]
+}
+
+model Permission {
+  id              String           @id
+  module          String           @unique
+  description     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  rolePermissions RolePermission[]
+  userPermissions UserPermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
+}
+
+model UserPermission {
+  userId       String
+  permissionId String
+  allowed      Boolean    @default(true)
+  user         AppUser    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([userId, permissionId])
 }
