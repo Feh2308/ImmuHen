@@ -235,7 +235,28 @@ function getLaborCost(record) {
 }
 
 function getUsageLaborCost(usage) {
-  return parseQuantity(usage?.laborCost ?? usage?.maoDeObra ?? 0);
+  const calculatedCost = parseQuantity(usage?.calculatedLaborCost);
+
+  if (calculatedCost > 0) {
+    return calculatedCost;
+  }
+
+  const costPerThousandBirds = getUsageLaborRate(usage);
+  const birdsVaccinated = parseQuantity(getUsageBirdsVaccinated(usage));
+
+  if (costPerThousandBirds <= 0) {
+    return 0;
+  }
+
+  if (birdsVaccinated <= 0) {
+    return 0;
+  }
+
+  return Number(((birdsVaccinated / 1000) * costPerThousandBirds).toFixed(2));
+}
+
+function getUsageLaborRate(usage) {
+  return parseQuantity(usage?.laborCostPerThousandBirds ?? usage?.laborCost ?? usage?.maoDeObra ?? 0);
 }
 
 function getUsagesLaborCost(usages = [], multiplier = 1) {
@@ -771,7 +792,9 @@ function Schedule() {
           fabricante: vaccine?.fabricante || usage.fabricante || "",
           doses: parseQuantity(usage.doses) || calculatedDoses,
           ...metrics,
-          laborCost: getUsageLaborCost(usage),
+          laborCost: getUsageLaborRate(usage),
+          laborCostPerThousandBirds: getUsageLaborRate(usage),
+          calculatedLaborCost: getUsageLaborCost(usage),
           applicationMethod: usage.applicationMethod || "Ocular",
         };
       });
@@ -803,7 +826,9 @@ function Schedule() {
               fabricante: vaccine?.fabricante || usage.fabricante || "",
               doses: parseQuantity(usage.doses) || calculatedDoses,
               ...metrics,
-              laborCost: getUsageLaborCost(usage),
+              laborCost: getUsageLaborRate(usage),
+              laborCostPerThousandBirds: getUsageLaborRate(usage),
+              calculatedLaborCost: getUsageLaborCost(usage),
               applicationMethod: usage.applicationMethod || row.defaultMethod || "Ocular",
             };
           }),
@@ -1324,7 +1349,7 @@ function getMapsLink(location) {
       flaskCc: getUsageFlaskCc(usage),
       dosePerBirdCc: getUsageDosePerBirdCc(usage),
       birdsVaccinated: getUsageBirdsVaccinated(usage),
-      laborCost: getUsageLaborCost(usage),
+      laborCost: getUsageLaborRate(usage),
       applicationMethod: usage.applicationMethod || schedule.applicationMethod || "Ocular",
     })));
   }
@@ -1378,7 +1403,9 @@ function getMapsLink(location) {
           fabricante: vaccine?.fabricante || usage.fabricante || "",
           doses: parseQuantity(usage.doses) || calculatedDoses,
           ...metrics,
-          laborCost: getUsageLaborCost(usage),
+          laborCost: getUsageLaborRate(usage),
+          laborCostPerThousandBirds: getUsageLaborRate(usage),
+          calculatedLaborCost: getUsageLaborCost(usage),
           applicationMethod: usage.applicationMethod || "Ocular",
         };
       });
@@ -1564,7 +1591,7 @@ function getMapsLink(location) {
             </tbody>
           </table>
           <p class="total">Custo estimado das vacinas: ${formatCurrency(totalCost)}</p>
-          <p class="total">Mao de obra: ${formatCurrency(laborCost)}</p>
+          <p class="total">Custo calculado por aves: ${formatCurrency(laborCost)}</p>
           <p class="total">Total estimado da janela: ${formatCurrency(totalWithLabor)}</p>
           <script>window.print();</script>
         </body>
@@ -1988,7 +2015,7 @@ function getMapsLink(location) {
                     </div>
                     <div className="rounded-xl bg-white p-3">
                       <p className="text-xs font-bold uppercase tracking-wide text-green-700">
-                        Mao de obra
+                        Custo calculado por aves
                       </p>
                       <p className="mt-1 font-bold text-zinc-900">
                         {formatCurrency(summary.laborCost)}
@@ -2065,7 +2092,7 @@ function getMapsLink(location) {
                     Custos do programa
                   </p>
                   <p className="mt-1 text-sm text-zinc-500">
-                    Informe a mao de obra em cada vacina. O total abaixo soma vacinas e mao de obra por item.
+                    Informe o custo a cada mil aves em cada vacina. O total abaixo soma vacinas e custo por item.
                   </p>
                 </div>
 
@@ -2382,7 +2409,7 @@ function getMapsLink(location) {
                         </label>
 
                         <label className="grid min-w-0 gap-2 text-sm font-semibold text-zinc-700">
-                          Mao de obra
+                          Custo a cada mil aves
                           <input
                             type="text"
                             inputMode="decimal"
@@ -2429,7 +2456,7 @@ function getMapsLink(location) {
                         Vacinas: {formatCurrency(getFormVaccineCost())}
                       </p>
                       <p className="mt-1 text-sm font-semibold text-zinc-600">
-                        Mao de obra: {formatCurrency(getFormLaborCost())}
+                        Custo calculado por aves: {formatCurrency(getFormLaborCost())}
                       </p>
                       <p className="mt-1 font-bold text-zinc-900">
                         Total: {formatCurrency(getFormTotalCost())}
@@ -2620,7 +2647,7 @@ function getMapsLink(location) {
                                       </label>
 
                                       <label className="grid min-w-0 gap-1 text-sm font-semibold text-zinc-700">
-                                        Mao de obra
+                                        Custo a cada mil aves
                                         <input
                                           type="text"
                                           inputMode="decimal"
@@ -2834,7 +2861,7 @@ function getMapsLink(location) {
 
                   <div className="rounded-xl border border-green-100 bg-green-50 p-4">
                     <p className="text-sm font-bold uppercase tracking-wide text-green-700">
-                      Mao de obra
+                      Custo calculado por aves
                     </p>
                     <p className="mt-2 text-lg font-bold text-zinc-900">
                       {formatCurrency(getLaborCost(schedule))}
@@ -2927,7 +2954,7 @@ function getMapsLink(location) {
 
                           {getUsageLaborCost(usage) > 0 && (
                             <p className="mt-3 rounded-xl bg-zinc-50 p-3 text-sm font-bold text-zinc-700">
-                              Mao de obra: {formatCurrency(getUsageLaborCost(usage))}
+                              Custo calculado por aves: {formatCurrency(getUsageLaborCost(usage))}
                             </p>
                           )}
                         </div>
@@ -3047,7 +3074,7 @@ function getMapsLink(location) {
                           inputMode="decimal"
                           value={usage.laborCost || ""}
                           onChange={(event) => updateEditingUsage(usage.id, "laborCost", event.target.value)}
-                          placeholder="Mao de obra"
+                          placeholder="Custo a cada mil aves"
                           className="min-w-0 rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
                         />
                       </div>
