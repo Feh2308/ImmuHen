@@ -10,6 +10,7 @@ import {
   ownerLogout,
   renewOwnerTenantApi,
   resetOwnerAccountPasswordApi,
+  resetOwnerTenantAdminPasswordApi,
   restoreOwnerTenantApi,
   updateOwnerTenantApi,
 } from "../services/vacitechApi";
@@ -185,6 +186,32 @@ function OwnerAdmin() {
       await resetOwnerAccountPasswordApi(account.id, password);
       await loadOverview();
       setMessage(`Senha alterada para ${account.email}.`);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resetTenantAdminPassword(tenant) {
+    const password = window.prompt(`Nova senha do Estoque/Administrador para ${getTenantName(tenant)}`);
+
+    if (!password) {
+      return;
+    }
+
+    if (password.length < 6) {
+      setMessage("A senha administrativa precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const data = await resetOwnerTenantAdminPasswordApi(tenant.tenantId, password);
+      setOverview(data.overview || overview);
+      setMessage(`Senha de Estoque/Administrador alterada para ${getTenantName(tenant)}.`);
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -417,6 +444,7 @@ function OwnerAdmin() {
                     <td>
                       <div className="flex min-w-[520px] flex-wrap gap-2">
                         <button type="button" onClick={() => startTenantEdit(tenant)} className="rounded-xl bg-zinc-900 px-3 py-2 text-sm font-bold text-white">Editar</button>
+                        <button type="button" onClick={() => resetTenantAdminPassword(tenant)} className="rounded-xl bg-zinc-900 px-3 py-2 text-sm font-bold text-white">Senha admin</button>
                         <button type="button" onClick={() => runTenantAction(renewOwnerTenantApi, tenant.tenantId, "Mensalidade renovada.")} className="rounded-xl bg-green-600 px-3 py-2 text-sm font-bold text-white">Renovar</button>
                         <button type="button" onClick={() => runTenantAction(expireOwnerTenantApi, tenant.tenantId, "Mensalidade vencida.")} className="rounded-xl bg-yellow-500 px-3 py-2 text-sm font-bold text-white">Vencer</button>
                         {getTenantStatus(tenant) === "INACTIVE" ? (

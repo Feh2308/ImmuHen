@@ -789,6 +789,40 @@ app.post("/api/owner/accounts/:accountId/reset-password", requireOwnerAccess, as
   });
 });
 
+app.post("/api/owner/tenants/:tenantId/admin-password", requireOwnerAccess, async (req, res) => {
+  const password = String(req.body.password || "");
+
+  if (password.length < 6) {
+    return res.status(400).json({
+      message: "A senha administrativa precisa ter pelo menos 6 caracteres.",
+    });
+  }
+
+  const data = await readVacitechData();
+
+  if (!data.tenants?.[req.params.tenantId]) {
+    return res.status(404).json({
+      message: "Granja nao encontrada.",
+    });
+  }
+
+  const tenantData = getTenantData(data, req.params.tenantId);
+
+  tenantData.adminAccess = {
+    passwordHash: hashPassword(password),
+    updatedAt: new Date().toISOString(),
+  };
+
+  data.tenants[req.params.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    success: true,
+    tenant: getOwnerOverview(data).tenants.find((tenant) => tenant.tenantId === req.params.tenantId),
+    overview: getOwnerOverview(data),
+  });
+});
+
 app.delete("/api/owner/accounts/:accountId", requireOwnerAccess, async (req, res) => {
   const data = await readVacitechData();
   const account = data.accounts.find((item) => item.id === req.params.accountId);

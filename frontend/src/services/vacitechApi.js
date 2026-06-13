@@ -348,6 +348,13 @@ export async function resetOwnerAccountPasswordApi(accountId, password) {
   });
 }
 
+export async function resetOwnerTenantAdminPasswordApi(tenantId, password) {
+  return ownerApiRequest(`/api/owner/tenants/${tenantId}/admin-password`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
 export async function fetchUsersApi() {
   return apiRequest("/api/vacitech/users");
 }
