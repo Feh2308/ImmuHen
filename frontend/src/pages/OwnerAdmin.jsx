@@ -9,6 +9,7 @@ import {
   ownerLoginApi,
   ownerLogout,
   renewOwnerTenantApi,
+  resetOwnerAccountPasswordApi,
   restoreOwnerTenantApi,
   updateOwnerTenantApi,
 } from "../services/vacitechApi";
@@ -163,6 +164,32 @@ function OwnerAdmin() {
     }
 
     await runTenantAction(deleteOwnerTenantApi, tenantId, "Granja excluida definitivamente.");
+  }
+
+  async function resetAccountPassword(account) {
+    const password = window.prompt(`Nova senha para ${account.email}`);
+
+    if (!password) {
+      return;
+    }
+
+    if (password.length < 6) {
+      setMessage("A senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      await resetOwnerAccountPasswordApi(account.id, password);
+      await loadOverview();
+      setMessage(`Senha alterada para ${account.email}.`);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (!hasOwnerToken && !overview) {
@@ -355,7 +382,37 @@ function OwnerAdmin() {
                     </td>
                     <td>{tenant.tenant?.identifier || "-"}</td>
                     <td>{getTenantStatus(tenant) === "INACTIVE" ? "Inativa" : "Ativa"}</td>
-                    <td>{tenant.accounts?.length || 0}</td>
+                    <td>
+                      <div className="grid min-w-[240px] gap-2">
+                        {(tenant.accounts || []).map((account) => (
+                          <div
+                            key={account.id}
+                            className="flex items-center justify-between gap-2 rounded-xl bg-green-50 px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-zinc-900">
+                                {account.email}
+                              </p>
+                              <p className="text-xs text-zinc-500">
+                                {account.role || "USUARIO"}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => resetAccountPassword(account)}
+                              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-bold text-white"
+                            >
+                              Senha
+                            </button>
+                          </div>
+                        ))}
+
+                        {(!tenant.accounts || tenant.accounts.length === 0) && (
+                          <span className="text-sm text-zinc-500">Sem contas</span>
+                        )}
+                      </div>
+                    </td>
                     <td>{tenant.subscription?.active ? "Ativa" : "Vencida"}</td>
                     <td>
                       <div className="flex min-w-[520px] flex-wrap gap-2">
