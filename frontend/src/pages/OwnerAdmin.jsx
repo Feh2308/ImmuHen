@@ -262,8 +262,14 @@ function OwnerAdmin() {
             <input className="rounded-xl border border-green-100 bg-green-50 p-3 outline-none" placeholder="Documento" value={tenantForm.document} onChange={(event) => updateTenantForm("document", event.target.value)} />
             <input className="rounded-xl border border-green-100 bg-green-50 p-3 outline-none" placeholder="Responsavel" value={tenantForm.owner} onChange={(event) => updateTenantForm("owner", event.target.value)} />
             <div className="grid grid-cols-2 gap-3">
-              <input type="color" className="h-12 rounded-xl border border-green-100 bg-green-50 p-1" value={tenantForm.primaryColor} onChange={(event) => updateTenantForm("primaryColor", event.target.value)} />
-              <input type="color" className="h-12 rounded-xl border border-green-100 bg-green-50 p-1" value={tenantForm.secondaryColor} onChange={(event) => updateTenantForm("secondaryColor", event.target.value)} />
+              <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                Cor geral
+                <input type="color" className="h-12 rounded-xl border border-green-100 bg-green-50 p-1" value={tenantForm.primaryColor} onChange={(event) => updateTenantForm("primaryColor", event.target.value)} />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                Cor secundaria
+                <input type="color" className="h-12 rounded-xl border border-green-100 bg-green-50 p-1" value={tenantForm.secondaryColor} onChange={(event) => updateTenantForm("secondaryColor", event.target.value)} />
+              </label>
             </div>
           </div>
 

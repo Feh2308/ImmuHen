@@ -67,6 +67,7 @@ export function VaccineProvider({
   children,
 }) {
   const [tenantId, setTenantId] = useState(getCurrentTenantId);
+  const [loadedTenantId, setLoadedTenantId] = useState(getCurrentTenantId);
 
   const [vaccines, setVaccines] =
     useState(() => getStoredItems("vaccines"));
@@ -104,38 +105,39 @@ export function VaccineProvider({
           return;
         }
 
-        if (Array.isArray(state.vaccines) && (state.vaccines.length > 0 || getStoredItems("vaccines").length === 0)) {
+        if (Array.isArray(state.vaccines)) {
           setVaccines(state.vaccines);
         }
 
-        if (Array.isArray(state.entries) && (state.entries.length > 0 || getStoredItems("entries").length === 0)) {
+        if (Array.isArray(state.entries)) {
           setEntries(state.entries);
         }
 
-        if (Array.isArray(state.outputs) && (state.outputs.length > 0 || getStoredItems("outputs").length === 0)) {
+        if (Array.isArray(state.outputs)) {
           setOutputs(state.outputs);
         }
 
         if (
           state.stockAlertLevels &&
           typeof state.stockAlertLevels === "object" &&
-          !Array.isArray(state.stockAlertLevels) &&
-          (Object.keys(state.stockAlertLevels).length > 0 || Object.keys(getStoredObject("stockAlertLevels")).length === 0)
+          !Array.isArray(state.stockAlertLevels)
         ) {
           setStockAlertLevels(state.stockAlertLevels);
         }
 
-        if (Array.isArray(state.vaccineEditRequests) && (state.vaccineEditRequests.length > 0 || getStoredItems("vaccineEditRequests").length === 0)) {
+        if (Array.isArray(state.vaccineEditRequests)) {
           setVaccineEditRequests(state.vaccineEditRequests);
         }
 
-        if (Array.isArray(state.entryEditRequests) && (state.entryEditRequests.length > 0 || getStoredItems("entryEditRequests").length === 0)) {
+        if (Array.isArray(state.entryEditRequests)) {
           setEntryEditRequests(state.entryEditRequests);
         }
 
-        if (Array.isArray(state.vaccineAuditLog) && (state.vaccineAuditLog.length > 0 || getStoredItems("vaccineAuditLog").length === 0)) {
+        if (Array.isArray(state.vaccineAuditLog)) {
           setVaccineAuditLog(state.vaccineAuditLog);
         }
+
+        setLoadedTenantId(tenantId);
       })
       .catch((error) => {
         console.log(error);
@@ -148,7 +150,10 @@ export function VaccineProvider({
 
   useEffect(() => {
     function loadTenantData() {
-      setTenantId(getCurrentTenantId());
+      const nextTenantId = getCurrentTenantId();
+
+      setLoadedTenantId("");
+      setTenantId(nextTenantId);
       setVaccines(getStoredItems("vaccines"));
       setEntries(getStoredItems("entries"));
       setOutputs(getStoredItems("outputs"));
@@ -156,6 +161,7 @@ export function VaccineProvider({
       setVaccineEditRequests(getStoredItems("vaccineEditRequests"));
       setEntryEditRequests(getStoredItems("entryEditRequests"));
       setVaccineAuditLog(getStoredItems("vaccineAuditLog"));
+      setLoadedTenantId(nextTenantId);
     }
 
     function loadTenantDataFromStorage(event) {
@@ -180,15 +186,22 @@ export function VaccineProvider({
 
   useEffect(() => {
 
+    if (!tenantId || loadedTenantId !== tenantId) {
+      return;
+    }
+
     writeJson(
       "vaccines",
       vaccines,
       { silent: true }
     );
 
-  }, [vaccines, tenantId]);
+  }, [loadedTenantId, vaccines, tenantId]);
 
   useEffect(() => {
+    if (!tenantId || loadedTenantId !== tenantId) {
+      return;
+    }
 
     writeJson(
       "entries",
@@ -196,9 +209,12 @@ export function VaccineProvider({
       { silent: true }
     );
 
-  }, [entries, tenantId]);
+  }, [entries, loadedTenantId, tenantId]);
 
   useEffect(() => {
+    if (!tenantId || loadedTenantId !== tenantId) {
+      return;
+    }
 
     writeJson(
       "outputs",
@@ -206,42 +222,58 @@ export function VaccineProvider({
       { silent: true }
     );
 
-  }, [outputs, tenantId]);
+  }, [loadedTenantId, outputs, tenantId]);
 
   useEffect(() => {
+    if (!tenantId || loadedTenantId !== tenantId) {
+      return;
+    }
+
     writeJson(
       "stockAlertLevels",
       stockAlertLevels,
       { silent: true }
     );
-  }, [stockAlertLevels, tenantId]);
+  }, [loadedTenantId, stockAlertLevels, tenantId]);
 
   useEffect(() => {
+    if (!tenantId || loadedTenantId !== tenantId) {
+      return;
+    }
+
     writeJson(
       "vaccineEditRequests",
       vaccineEditRequests,
       { silent: true }
     );
-  }, [vaccineEditRequests, tenantId]);
+  }, [loadedTenantId, tenantId, vaccineEditRequests]);
 
   useEffect(() => {
+    if (!tenantId || loadedTenantId !== tenantId) {
+      return;
+    }
+
     writeJson(
       "entryEditRequests",
       entryEditRequests,
       { silent: true }
     );
-  }, [entryEditRequests, tenantId]);
+  }, [entryEditRequests, loadedTenantId, tenantId]);
 
   useEffect(() => {
+    if (!tenantId || loadedTenantId !== tenantId) {
+      return;
+    }
+
     writeJson(
       "vaccineAuditLog",
       vaccineAuditLog,
       { silent: true }
     );
-  }, [vaccineAuditLog, tenantId]);
+  }, [loadedTenantId, tenantId, vaccineAuditLog]);
 
   useEffect(() => {
-    if (!tenantId || !localStorage.getItem("token")) {
+    if (!tenantId || loadedTenantId !== tenantId || !localStorage.getItem("token")) {
       return undefined;
     }
 
@@ -282,6 +314,7 @@ export function VaccineProvider({
   }, [
     entries,
     entryEditRequests,
+    loadedTenantId,
     outputs,
     stockAlertLevels,
     tenantId,
