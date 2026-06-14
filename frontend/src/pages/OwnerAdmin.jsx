@@ -31,11 +31,35 @@ const emptyTenantForm = {
 };
 
 function getTenantName(tenant) {
-  return tenant.tenant?.name || tenant.farmProfile?.farmName || tenant.tenantId;
+  const name = String(tenant.tenant?.name || tenant.farmProfile?.farmName || tenant.tenantId || "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .trim();
+
+  return name || tenant.tenantId;
 }
 
 function getTenantStatus(tenant) {
   return tenant.tenant?.status || (tenant.archivedAt ? "INACTIVE" : "ACTIVE");
+}
+
+function formatTenantDomain(tenant) {
+  const rawValue = String(tenant.tenant?.domain || tenant.farmProfile?.domain || "").trim();
+
+  if (!rawValue) {
+    return "-";
+  }
+
+  const urlStart = rawValue.search(/https?:\/\//i);
+  const value = urlStart >= 0 ? rawValue.slice(urlStart) : rawValue;
+
+  try {
+    return new URL(value.includes("://") ? value : `https://${value}`).hostname || "-";
+  } catch (error) {
+    return value
+      .replace(/^https?:\/\//i, "")
+      .split(/[/?#]/)[0]
+      .trim() || "-";
+  }
 }
 
 function OwnerAdmin() {
@@ -113,7 +137,7 @@ function OwnerAdmin() {
       ...emptyTenantForm,
       name: tenant.tenant?.name || tenant.farmProfile?.farmName || "",
       identifier: tenant.tenant?.identifier || tenant.farmProfile?.identifier || "",
-      domain: tenant.tenant?.domain || tenant.farmProfile?.domain || "",
+      domain: formatTenantDomain(tenant) === "-" ? "" : formatTenantDomain(tenant),
       primaryColor: tenant.tenant?.primaryColor || tenant.farmProfile?.primaryColor || "#16a34a",
       secondaryColor: tenant.tenant?.secondaryColor || tenant.farmProfile?.secondaryColor || "#dcfce7",
       status: getTenantStatus(tenant),
@@ -389,6 +413,7 @@ function OwnerAdmin() {
                 <tr className="border-b border-green-100 text-zinc-500">
                   <th className="pb-4">Granja</th>
                   <th className="pb-4">Identificador</th>
+                  <th className="pb-4">Dominio</th>
                   <th className="pb-4">Status</th>
                   <th className="pb-4">Contas</th>
                   <th className="pb-4">Assinatura</th>
@@ -408,6 +433,7 @@ function OwnerAdmin() {
                       </div>
                     </td>
                     <td>{tenant.tenant?.identifier || "-"}</td>
+                    <td>{formatTenantDomain(tenant)}</td>
                     <td>{getTenantStatus(tenant) === "INACTIVE" ? "Inativa" : "Ativa"}</td>
                     <td>
                       <div className="grid min-w-[240px] gap-2">

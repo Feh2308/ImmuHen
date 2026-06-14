@@ -7,28 +7,24 @@ import {
   loginApi,
 } from "../services/vacitechApi";
 import {
+  clearTenantAccessSessions,
   getFarmProfile,
   hasCompleteFarmProfile,
   notifyTenantStorageReady,
-  readJson,
   saveAccountSession,
   writeJson,
 } from "../utils/vacitechStorage";
 
-function pickServerArray(serverValue, key) {
-  if (Array.isArray(serverValue)) {
-    return serverValue;
-  }
-
-  return readJson(key, []);
+function pickServerArray(serverValue) {
+  return Array.isArray(serverValue) ? serverValue : [];
 }
 
-function pickServerObject(serverValue, key) {
+function pickServerObject(serverValue) {
   if (serverValue && typeof serverValue === "object" && !Array.isArray(serverValue)) {
     return serverValue;
   }
 
-  return readJson(key, {});
+  return {};
 }
 
 function Login() {
@@ -49,8 +45,7 @@ function Login() {
     try {
       const data = await loginApi({ email, password });
 
-      sessionStorage.removeItem("stockAuthorized");
-      sessionStorage.removeItem("chiefAuthorized");
+      clearTenantAccessSessions();
       saveAccountSession({ token: data.token, user: data.user }, { silent: true });
       writeJson("farmProfile", data.farmProfile || data.state?.farmProfile || {}, { silent: true });
       writeJson("tenantSettings", data.tenant || data.state?.tenantSettings || {}, { silent: true });

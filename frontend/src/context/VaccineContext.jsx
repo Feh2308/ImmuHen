@@ -105,17 +105,11 @@ export function VaccineProvider({
           return;
         }
 
-        if (Array.isArray(state.vaccines)) {
-          setVaccines(state.vaccines);
-        }
+        setVaccines(Array.isArray(state.vaccines) ? state.vaccines : []);
 
-        if (Array.isArray(state.entries)) {
-          setEntries(state.entries);
-        }
+        setEntries(Array.isArray(state.entries) ? state.entries : []);
 
-        if (Array.isArray(state.outputs)) {
-          setOutputs(state.outputs);
-        }
+        setOutputs(Array.isArray(state.outputs) ? state.outputs : []);
 
         if (
           state.stockAlertLevels &&
@@ -123,19 +117,15 @@ export function VaccineProvider({
           !Array.isArray(state.stockAlertLevels)
         ) {
           setStockAlertLevels(state.stockAlertLevels);
+        } else {
+          setStockAlertLevels({});
         }
 
-        if (Array.isArray(state.vaccineEditRequests)) {
-          setVaccineEditRequests(state.vaccineEditRequests);
-        }
+        setVaccineEditRequests(Array.isArray(state.vaccineEditRequests) ? state.vaccineEditRequests : []);
 
-        if (Array.isArray(state.entryEditRequests)) {
-          setEntryEditRequests(state.entryEditRequests);
-        }
+        setEntryEditRequests(Array.isArray(state.entryEditRequests) ? state.entryEditRequests : []);
 
-        if (Array.isArray(state.vaccineAuditLog)) {
-          setVaccineAuditLog(state.vaccineAuditLog);
-        }
+        setVaccineAuditLog(Array.isArray(state.vaccineAuditLog) ? state.vaccineAuditLog : []);
 
         setLoadedTenantId(tenantId);
       })
@@ -422,13 +412,38 @@ export function VaccineProvider({
   }
 
   function removeVaccine(id) {
+    const vaccine = vaccines.find((item) => String(item.id) === String(id));
+    const removedEntries = entries.filter((entry) => String(entry.vaccineId) === String(id));
+    const removedOutputs = outputs.filter((output) => String(output.vaccineId) === String(id));
+    const removedEntryDoses = removedEntries.reduce((total, entry) => total + Number(entry.doses || 0), 0);
+    const removedOutputDoses = removedOutputs.reduce((total, output) => total + Number(output.doses || 0), 0);
 
     const filtered =
       vaccines.filter(
-        (v) => v.id !== id
+        (v) => String(v.id) !== String(id)
       );
 
     setVaccines(filtered);
+    setEntries((currentEntries) => currentEntries.filter((entry) => (
+      String(entry.vaccineId) !== String(id)
+    )));
+    setOutputs((currentOutputs) => currentOutputs.filter((output) => (
+      String(output.vaccineId) !== String(id)
+    )));
+    setVaccineAuditLog((currentLog) => [
+      {
+        id: `audit-vaccine-delete-${Date.now()}`,
+        type: "vaccine-deleted",
+        vaccineId: id,
+        vaccineName: vaccine?.nome || "Vacina excluida",
+        reason: "Vacina excluida pelo Administrador.",
+        removedEntryDoses,
+        removedOutputDoses,
+        stockImpact: removedEntryDoses - removedOutputDoses,
+        createdAt: new Date().toLocaleString("pt-BR"),
+      },
+      ...currentLog,
+    ]);
   }
 
   function updateVaccine(id, updates) {
@@ -785,9 +800,27 @@ export function VaccineProvider({
   }
 
   function removeEntry(id) {
+    const entry = entries.find((item) => String(item.id) === String(id));
+
     setEntries((currentEntries) => currentEntries.filter((entry) => (
       String(entry.id) !== String(id)
     )));
+
+    if (entry) {
+      setVaccineAuditLog((currentLog) => [
+        {
+          id: `audit-entry-delete-${Date.now()}`,
+          type: "entry-deleted",
+          entryId: id,
+          vaccineId: entry.vaccineId || "",
+          vaccineName: entry.vacina || getVaccineName(entry.vaccineId),
+          reason: "Entrada excluida pelo Administrador.",
+          removedEntryDoses: Number(entry.doses || 0),
+          createdAt: new Date().toLocaleString("pt-BR"),
+        },
+        ...currentLog,
+      ]);
+    }
   }
 
   function addOutput(output) {

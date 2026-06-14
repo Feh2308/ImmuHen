@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { registerFarmAccountApi } from "../services/vacitechApi";
 import {
+  clearTenantAccessSessions,
   DEFAULT_RANCHES,
   notifyTenantStorageReady,
   normalizeImportantContacts,
@@ -105,8 +106,7 @@ function RegisterFarm() {
         importantContacts: normalizeImportantContacts(form.importantContacts),
       });
 
-      sessionStorage.removeItem("stockAuthorized");
-      sessionStorage.removeItem("chiefAuthorized");
+      clearTenantAccessSessions();
       saveAccountSession({ token: data.token, user: data.user }, { silent: true });
       writeJson("farmProfile", data.farmProfile || data.state?.farmProfile || {}, { silent: true });
       writeJson("tenantSettings", data.tenant || data.state?.tenantSettings || {}, { silent: true });

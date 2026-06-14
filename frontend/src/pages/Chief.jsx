@@ -18,7 +18,7 @@ import {
   getDefaultPermissionsForRole,
   isAdminUser,
 } from "../utils/permissions";
-import { readJson } from "../utils/vacitechStorage";
+import { getTenantSessionKey, readJson } from "../utils/vacitechStorage";
 import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 const emptyUserForm = {
@@ -96,7 +96,48 @@ function getChangedText(request) {
     .join(" | ");
 }
 
+function getAuditActionText(item) {
+  if (item.type === "vaccine-edit-approved") {
+    return "Edicao de vacina aprovada";
+  }
+
+  if (item.type === "vaccine-edit-rejected") {
+    return "Edicao de vacina recusada";
+  }
+
+  if (item.type === "entry-value-edit-approved") {
+    return "Valor de entrada aprovado";
+  }
+
+  if (item.type === "entry-value-edit-rejected") {
+    return "Valor de entrada recusado";
+  }
+
+  if (item.type === "vaccine-deleted") {
+    return `Vacina excluida | entradas removidas: ${item.removedEntryDoses || 0} doses | baixas removidas: ${item.removedOutputDoses || 0} doses`;
+  }
+
+  if (item.type === "entry-deleted") {
+    return `Entrada excluida | estoque reduziu ${item.removedEntryDoses || 0} doses`;
+  }
+
+  return item.reason || "Movimentacao registrada";
+}
+
+function getMovementSortValue(item) {
+  const numericId = Number(String(item.id || "").split("-").pop());
+
+  if (Number.isFinite(numericId) && numericId > 0) {
+    return numericId;
+  }
+
+  const timestamp = Date.parse(item.createdAt || item.data || "");
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function Chief() {
+  const chiefSessionKey = getTenantSessionKey("chiefAuthorized");
   const {
     vaccines,
     entries,
@@ -116,7 +157,7 @@ function Chief() {
   } = useVaccines();
 
   const [authorized, setAuthorized] =
-    useState(() => sessionStorage.getItem("chiefAuthorized") === "true");
+    useState(() => sessionStorage.getItem(chiefSessionKey) === "true");
 
   const [password, setPassword] =
     useState("");
@@ -281,6 +322,35 @@ function Chief() {
   const pendingEntryEditRequests = entryEditRequests.filter((request) => request.status === "pending");
   const recentAuditLog = vaccineAuditLog.slice(0, 6);
   const recentEntries = entries.slice(-10).reverse();
+  const recentMovementRows = useMemo(() => {
+    const entryRows = entries.map((entry) => ({
+      id: `entrada-${entry.id}`,
+      type: "Entrada",
+      vaccineName: entry.vacina || "Vacina",
+      doses: Number(entry.doses || 0),
+      date: entry.data || entry.createdAt || "-",
+      detail: entry.lote || "-",
+      responsible: entry.fornecedor || "-",
+      observation: entry.observacao || "Entrada registrada no estoque.",
+      className: "text-green-700",
+    }));
+
+    const outputRows = outputs.map((output) => ({
+      id: `baixa-${output.id}`,
+      type: "Baixa",
+      vaccineName: output.vacina || "Vacina",
+      doses: Number(output.doses || 0),
+      date: output.data || output.createdAt || "-",
+      detail: output.birdLotName || output.destino || output.programSuggestedName || "-",
+      responsible: output.responsavel || "-",
+      observation: output.observacao || "Baixa registrada no estoque.",
+      className: "text-red-600",
+    }));
+
+    return [...entryRows, ...outputRows]
+      .sort((first, second) => getMovementSortValue(second) - getMovementSortValue(first))
+      .slice(0, 12);
+  }, [entries, outputs]);
   const selectedEntryVaccine = vaccines.find((vaccine) => String(vaccine.id) === String(entryForm.vaccineId));
   const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
   const entryDosesPerBottle = parseQuantity(entryForm.dosesPerBottle || selectedEntryVaccine?.dosesPerBottle);
@@ -447,7 +517,8 @@ function Chief() {
 
     try {
       await authorizeChiefAccessApi(password);
-      sessionStorage.setItem("chiefAuthorized", "true");
+      sessionStorage.removeItem("chiefAuthorized");
+      sessionStorage.setItem(chiefSessionKey, "true");
       setAuthorized(true);
       setPassword("");
     } catch (error) {
@@ -459,6 +530,7 @@ function Chief() {
 
   function lockChiefArea() {
     sessionStorage.removeItem("chiefAuthorized");
+    sessionStorage.removeItem(chiefSessionKey);
     setAuthorized(false);
     setPassword("");
   }
@@ -971,6 +1043,62 @@ function Chief() {
             <strong className="mt-3 block text-4xl text-yellow-700">{summary.pendingEdits}</strong>
           </div>
         </div>
+
+        <section className="mt-8 rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-zinc-900">
+                Movimentacoes recentes
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Entradas aumentam o estoque. Baixas de programa, agendamento ou solicitacao reduzem o saldo.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 overflow-x-auto">
+            <table className="w-full text-left text-zinc-900">
+              <thead>
+                <tr className="border-b border-green-100 text-zinc-500">
+                  <th className="pb-4">Tipo</th>
+                  <th className="pb-4">Vacina</th>
+                  <th className="pb-4">Doses</th>
+                  <th className="pb-4">Lote/Destino</th>
+                  <th className="pb-4">Responsavel</th>
+                  <th className="pb-4">Data</th>
+                  <th className="pb-4">Observacao</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {recentMovementRows.map((row) => (
+                  <tr key={row.id} className="border-b border-green-100 last:border-b-0">
+                    <td className={`py-4 font-bold ${row.className}`}>
+                      {row.type}
+                    </td>
+                    <td>{row.vaccineName}</td>
+                    <td className={`font-bold ${row.className}`}>
+                      {row.type === "Entrada" ? "+" : "-"}
+                      {row.doses}
+                    </td>
+                    <td>{row.detail}</td>
+                    <td>{row.responsible}</td>
+                    <td>{row.date}</td>
+                    <td className="min-w-64 max-w-xs whitespace-normal break-words text-zinc-500">
+                      {row.observation}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {recentMovementRows.length === 0 && (
+              <p className="mt-4 rounded-2xl bg-green-50 p-5 text-zinc-500">
+                Nenhuma movimentacao registrada.
+              </p>
+            )}
+          </div>
+        </section>
 
         <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-2">
           <div className="rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
@@ -1514,10 +1642,7 @@ function Chief() {
                     <td className="py-4">{item.createdAt}</td>
                     <td>{item.vaccineName}</td>
                     <td>
-                      {item.type === "vaccine-edit-approved" && "Edicao de vacina aprovada"}
-                      {item.type === "vaccine-edit-rejected" && "Edicao de vacina recusada"}
-                      {item.type === "entry-value-edit-approved" && "Valor de entrada aprovado"}
-                      {item.type === "entry-value-edit-rejected" && "Valor de entrada recusado"}
+                      {getAuditActionText(item)}
                     </td>
                     <td>{item.approvedBy || item.rejectedBy || "-"}</td>
                   </tr>

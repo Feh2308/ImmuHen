@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 
 import Login from "../pages/Login";
 import Home from "../pages/Home";
@@ -18,11 +19,33 @@ import Chief from "../pages/Chief";
 import OwnerAdmin from "../pages/OwnerAdmin";
 import PermissionRoute from "../components/PermissionRoute";
 import { ACCESS_MODULES } from "../utils/permissions";
+import { applyThemeForPath } from "../utils/tenantTheme";
+
+function ThemeController() {
+  const location = useLocation();
+
+  useEffect(() => {
+    function refreshTheme() {
+      applyThemeForPath(location.pathname);
+    }
+
+    refreshTheme();
+    window.addEventListener("storage", refreshTheme);
+    window.addEventListener("vacitech-storage", refreshTheme);
+
+    return () => {
+      window.removeEventListener("storage", refreshTheme);
+      window.removeEventListener("vacitech-storage", refreshTheme);
+    };
+  }, [location.pathname]);
+
+  return null;
+}
 
 export default function AppRoutes() {
-
   return (
     <BrowserRouter>
+      <ThemeController />
 
       <Routes>
 

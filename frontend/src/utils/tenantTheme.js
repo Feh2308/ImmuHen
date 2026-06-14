@@ -1,11 +1,19 @@
 import { getFarmProfile, readJson } from "./vacitechStorage";
 
-const defaultTheme = {
+export const defaultTheme = {
   name: "ImmuHen",
   logoDataUrl: "",
   primaryColor: "#16a34a",
   secondaryColor: "#dcfce7",
 };
+
+const DEFAULT_THEME_PATHS = [
+  "/",
+  "/cadastro",
+  "/admin-geral",
+  "/vacinador",
+  "/temperatura-vacina",
+];
 
 function normalizeHexColor(value, fallback) {
   const color = String(value || "").trim();
@@ -39,4 +47,26 @@ export function applyTenantTheme(theme = getTenantTheme()) {
   document.title = theme.name && theme.name !== "ImmuHen"
     ? `${theme.name} | ImmuHen`
     : "ImmuHen";
+}
+
+export function shouldUseDefaultTheme(pathname = "") {
+  const normalizedPath = String(pathname || "/").toLowerCase();
+
+  return DEFAULT_THEME_PATHS.some((path) => (
+    normalizedPath === path ||
+    (path !== "/" && normalizedPath.startsWith(`${path}/`))
+  ));
+}
+
+export function applyDefaultTheme() {
+  applyTenantTheme(defaultTheme);
+}
+
+export function applyThemeForPath(pathname = "") {
+  if (shouldUseDefaultTheme(pathname)) {
+    applyDefaultTheme();
+    return;
+  }
+
+  applyTenantTheme();
 }

@@ -12,7 +12,9 @@ import {
 } from "../services/vacitechApi";
 import {
   clearAccountSession,
+  clearTenantAccessSessions,
   getFarmProfile,
+  getTenantSessionKey,
   hasAccountSession,
   hasCompleteFarmProfile,
   writeJson,
@@ -143,9 +145,8 @@ function Welcome() {
   }, []);
 
   function closeSystem() {
+    clearTenantAccessSessions();
     clearAccountSession();
-    sessionStorage.removeItem("stockAuthorized");
-    sessionStorage.removeItem("chiefAuthorized");
     navigate("/", { replace: true });
   }
 
@@ -155,7 +156,8 @@ function Welcome() {
 
     try {
       await authorizeStockAccessApi(password);
-      sessionStorage.setItem("stockAuthorized", "true");
+      sessionStorage.removeItem("stockAuthorized");
+      sessionStorage.setItem(getTenantSessionKey("stockAuthorized"), "true");
       navigate("/estoque");
     } catch (error) {
       setStockAccessMessage(error.message || "Senha administrativa incorreta");

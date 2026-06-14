@@ -1195,22 +1195,22 @@ app.put("/api/vacitech/inventory-state", async (req, res) => {
   const tenantData = getTenantData(data, req.tenantId);
 
   tenantData.vaccines = Array.isArray(req.body.vaccines)
-    ? req.body.vaccines
+    ? tagItemsWithTenant(req.body.vaccines, req.tenantId)
     : tenantData.vaccines;
   tenantData.entries = Array.isArray(req.body.entries)
-    ? req.body.entries
+    ? tagItemsWithTenant(req.body.entries, req.tenantId)
     : tenantData.entries;
   tenantData.outputs = Array.isArray(req.body.outputs)
-    ? req.body.outputs
+    ? tagItemsWithTenant(req.body.outputs, req.tenantId)
     : tenantData.outputs;
   tenantData.vaccineEditRequests = Array.isArray(req.body.vaccineEditRequests)
-    ? req.body.vaccineEditRequests
+    ? tagItemsWithTenant(req.body.vaccineEditRequests, req.tenantId)
     : tenantData.vaccineEditRequests;
   tenantData.entryEditRequests = Array.isArray(req.body.entryEditRequests)
-    ? req.body.entryEditRequests
+    ? tagItemsWithTenant(req.body.entryEditRequests, req.tenantId)
     : tenantData.entryEditRequests;
   tenantData.vaccineAuditLog = Array.isArray(req.body.vaccineAuditLog)
-    ? req.body.vaccineAuditLog
+    ? tagItemsWithTenant(req.body.vaccineAuditLog, req.tenantId)
     : tenantData.vaccineAuditLog;
   tenantData.stockAlertLevels = req.body.stockAlertLevels && typeof req.body.stockAlertLevels === "object" && !Array.isArray(req.body.stockAlertLevels)
     ? req.body.stockAlertLevels
@@ -3037,7 +3037,10 @@ function getTenantData(data, tenantId) {
 }
 
 function sanitizeTenantIdentifier(value, fallback = "") {
-  const identifier = String(value || "")
+  const withoutUrl = String(value || "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .trim();
+  const identifier = String(withoutUrl || fallback || "")
     .trim()
     .toLowerCase()
     .normalize("NFD")
@@ -3047,6 +3050,35 @@ function sanitizeTenantIdentifier(value, fallback = "") {
     .replace(/^-|-$/g, "");
 
   return identifier || String(fallback || "").trim().toLowerCase() || `granja-${Date.now()}`;
+}
+
+function normalizeTenantName(value, fallback = "Granja") {
+  const name = String(value || "")
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return name || String(fallback || "Granja").trim() || "Granja";
+}
+
+function normalizeTenantDomain(value) {
+  const rawValue = String(value || "").trim();
+
+  if (!rawValue) {
+    return "";
+  }
+
+  const urlStart = rawValue.search(/https?:\/\//i);
+  const cleanedValue = urlStart >= 0 ? rawValue.slice(urlStart) : rawValue;
+
+  try {
+    return new URL(cleanedValue.includes("://") ? cleanedValue : `https://${cleanedValue}`).hostname || "";
+  } catch (error) {
+    return cleanedValue
+      .replace(/^https?:\/\//i, "")
+      .split(/[/?#]/)[0]
+      .trim();
+  }
 }
 
 function createTenantIdentifier(name, tenantId) {
@@ -3080,9 +3112,9 @@ function normalizeTenantSettings(tenantId, tenantData = {}) {
     : {};
 
   return {
-    name: String(settings.name || farmProfile.farmName || tenantId || "Granja").trim(),
+    name: normalizeTenantName(settings.name || farmProfile.farmName, tenantId || "Granja"),
     identifier: sanitizeTenantIdentifier(settings.identifier || farmProfile.identifier, tenantId),
-    domain: String(settings.domain || farmProfile.domain || "").trim(),
+    domain: normalizeTenantDomain(settings.domain || farmProfile.domain || ""),
     logoDataUrl: String(settings.logoDataUrl || farmProfile.logoDataUrl || "").trim(),
     primaryColor: normalizeHexColor(settings.primaryColor || farmProfile.primaryColor, defaultTenantPrimaryColor),
     secondaryColor: normalizeHexColor(settings.secondaryColor || farmProfile.secondaryColor, defaultTenantSecondaryColor),
@@ -3267,6 +3299,26 @@ function hasAnyPermission(account, permissions = []) {
   return permissions.some((permission) => hasPermission(account, permission));
 }
 
+function tagItemsWithTenant(items = [], tenantId = "") {
+  return items.map((item) => (
+    item && typeof item === "object"
+      ? {
+          ...item,
+          tenantId,
+        }
+      : item
+  ));
+}
+
+function filterItemsForTenant(items = [], tenantId = "") {
+  return items.filter((item) => (
+    !item ||
+    typeof item !== "object" ||
+    !item.tenantId ||
+    String(item.tenantId) === String(tenantId)
+  ));
+}
+
 function getVacitechRoutePermissions(req) {
   const requestPath = req.path || "";
 
@@ -3325,11 +3377,18 @@ function getVacitechRoutePermissions(req) {
 }
 
 function filterTenantDataForAccount(tenantData, account) {
+  const tenantId = account?.tenantId || "";
   const filteredData = {
     ...tenantData,
     adminAccess: {
       updatedAt: tenantData?.adminAccess?.updatedAt || "",
     },
+    vaccines: filterItemsForTenant(tenantData.vaccines || [], tenantId),
+    entries: filterItemsForTenant(tenantData.entries || [], tenantId),
+    outputs: filterItemsForTenant(tenantData.outputs || [], tenantId),
+    vaccineEditRequests: filterItemsForTenant(tenantData.vaccineEditRequests || [], tenantId),
+    entryEditRequests: filterItemsForTenant(tenantData.entryEditRequests || [], tenantId),
+    vaccineAuditLog: filterItemsForTenant(tenantData.vaccineAuditLog || [], tenantId),
   };
 
   if (!hasPermission(account, ACCESS_MODULES.VACINAS)) {

@@ -6,6 +6,7 @@ import {
   useVaccines,
 } from "../context/VaccineContext";
 import { authorizeStockAccessApi } from "../services/vacitechApi";
+import { getTenantSessionKey } from "../utils/vacitechStorage";
 import { compareVaccinesByCode, sortVaccinesByCode } from "../utils/vaccineSort";
 
 function formatCurrency(value) {
@@ -57,6 +58,7 @@ function getStatus(saldo) {
 }
 
 function Stock() {
+  const stockSessionKey = getTenantSessionKey("stockAuthorized");
 
   const {
     vaccines,
@@ -74,7 +76,7 @@ function Stock() {
     useState("");
 
   const [authorized, setAuthorized] =
-    useState(() => sessionStorage.getItem("stockAuthorized") === "true");
+    useState(() => sessionStorage.getItem(stockSessionKey) === "true");
   const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
 
   const stockRows = useMemo(() => {
@@ -239,7 +241,8 @@ function Stock() {
 
     try {
       await authorizeStockAccessApi(password);
-      sessionStorage.setItem("stockAuthorized", "true");
+      sessionStorage.removeItem("stockAuthorized");
+      sessionStorage.setItem(stockSessionKey, "true");
       setAuthorized(true);
       setPassword("");
     } catch (error) {
@@ -251,6 +254,7 @@ function Stock() {
 
   function lockStock() {
     sessionStorage.removeItem("stockAuthorized");
+    sessionStorage.removeItem(stockSessionKey);
     setAuthorized(false);
     setPassword("");
   }

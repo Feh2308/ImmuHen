@@ -132,6 +132,7 @@ export function clearAccountSession() {
   localStorage.removeItem("token");
   localStorage.removeItem("user");
   localStorage.removeItem(CURRENT_TENANT_KEY);
+  clearTenantAccessSessions();
   emitTenantChanged("");
 }
 
@@ -153,6 +154,28 @@ export function getStorageKey(key) {
   }
 
   return `${TENANT_STORAGE_PREFIX}${getCurrentTenantId() || "guest"}:${key}`;
+}
+
+export function getTenantSessionKey(key) {
+  return `${key}:${getCurrentTenantId() || "guest"}`;
+}
+
+export function clearTenantAccessSessions() {
+  if (typeof window === "undefined" || !window.sessionStorage) {
+    return;
+  }
+
+  const prefixes = ["stockAuthorized", "chiefAuthorized"];
+
+  prefixes.forEach((key) => {
+    sessionStorage.removeItem(key);
+  });
+
+  Object.keys(sessionStorage).forEach((key) => {
+    if (prefixes.some((prefix) => key.startsWith(`${prefix}:`))) {
+      sessionStorage.removeItem(key);
+    }
+  });
 }
 
 export function readJson(key, fallback) {
