@@ -845,6 +845,32 @@ export function VaccineProvider({
     });
   }
 
+  function clearUsedDoses(metadata = {}) {
+    const removedOutputDoses = outputs.reduce((total, output) => (
+      total + Number(output.doses || 0)
+    ), 0);
+    const affectedVaccines = new Set(
+      outputs
+        .map((output) => output.vacina || getVaccineName(output.vaccineId, "Vacina"))
+        .filter(Boolean)
+    );
+
+    setOutputs([]);
+    setVaccineAuditLog((currentLog) => [
+      {
+        id: `audit-used-doses-clear-${Date.now()}`,
+        type: "used-doses-cleared",
+        vaccineName: "Doses usadas",
+        reason: "Doses usadas limpas pelo Administrador.",
+        removedOutputDoses,
+        affectedVaccinesCount: affectedVaccines.size,
+        clearedBy: metadata.clearedBy || "Administrador",
+        createdAt: new Date().toLocaleString("pt-BR"),
+      },
+      ...currentLog,
+    ]);
+  }
+
   function calculateStock(id) {
     return getStockFromLists(entries, outputs, id);
   }
@@ -873,6 +899,7 @@ export function VaccineProvider({
         updateEntry,
         removeEntry,
         addOutput,
+        clearUsedDoses,
 
         calculateStock,
         getStockAlertLevel,

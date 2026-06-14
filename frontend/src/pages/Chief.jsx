@@ -121,6 +121,10 @@ function getAuditActionText(item) {
     return `Entrada excluida | estoque reduziu ${item.removedEntryDoses || 0} doses`;
   }
 
+  if (item.type === "used-doses-cleared") {
+    return `Doses usadas limpas | ${item.removedOutputDoses || 0} doses removidas das baixas`;
+  }
+
   return item.reason || "Movimentacao registrada";
 }
 
@@ -150,6 +154,7 @@ function Chief() {
     removeVaccine,
     updateEntry,
     removeEntry,
+    clearUsedDoses,
     approveVaccineEdit,
     rejectVaccineEdit,
     approveEntryValueEdit,
@@ -724,6 +729,32 @@ function Chief() {
     removeEntry(entryId);
   }
 
+  function clearUsedDosesFromAdmin() {
+    if (outputs.length === 0) {
+      alert("Nao existem doses usadas para limpar.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Limpar todas as doses usadas?\n\nIsso remove ${summary.totalOutputs} doses das baixas e o estoque sera recalculado.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const typed = window.prompt("Digite LIMPAR para confirmar.");
+
+    if (typed !== "LIMPAR") {
+      alert("Operacao cancelada.");
+      return;
+    }
+
+    clearUsedDoses({
+      clearedBy: getCurrentUserLabel(),
+    });
+  }
+
   if (!authorized) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
@@ -1043,6 +1074,27 @@ function Chief() {
             <strong className="mt-3 block text-4xl text-yellow-700">{summary.pendingEdits}</strong>
           </div>
         </div>
+
+        <section className="mt-8 rounded-3xl border border-red-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-zinc-900">
+                Controle de doses usadas
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Use somente se precisar zerar as baixas registradas e recalcular o estoque pelas entradas.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={clearUsedDosesFromAdmin}
+              className="w-fit rounded-2xl bg-red-600 px-6 py-4 font-bold text-white transition hover:bg-red-700"
+            >
+              Limpar doses usadas
+            </button>
+          </div>
+        </section>
 
         <section className="mt-8 rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
