@@ -255,6 +255,12 @@ function getUsageTechnicalText(item) {
 function getRecordMaterials(record) {
   const storedMaterials = Array.isArray(record.materialsUsed) && record.materialsUsed.length > 0
     ? record.materialsUsed
+    : Array.isArray(record.actualVaccineUsages) && record.actualVaccineUsages.length > 0
+      ? record.actualVaccineUsages.map((item) => ({
+          ...item,
+          doses: parseQuantity(item.quantityUsed || item.doses),
+          source: "Uso real confirmado",
+        }))
     : [
         ...(Array.isArray(record.vaccineUsages) ? record.vaccineUsages : []),
         ...(Array.isArray(record.doseRequest?.confirmedItems) ? record.doseRequest.confirmedItems : []),
@@ -270,6 +276,45 @@ function getRecordMaterials(record) {
       source: item.source || "",
     }))
     .filter((item) => item.vacina && item.doses > 0);
+}
+
+function getRequestUsageItems(request) {
+  return [
+    ...(Array.isArray(request.vaccineUsages)
+      ? request.vaccineUsages.map((item) => ({
+          ...item,
+          source: "Agendamento",
+        }))
+      : []),
+    ...(Array.isArray(request.doseRequest?.confirmedItems)
+      ? request.doseRequest.confirmedItems.map((item) => ({
+          ...item,
+          source: "Doses liberadas",
+        }))
+      : []),
+  ]
+    .map((item, index) => ({
+      id: String(item.id || `${request.id}-uso-${index}`),
+      vaccineId: String(item.vaccineId || "").trim(),
+      vacina: item.vacina || item.name || "Vacina",
+      codigo: item.codigo || "",
+      fabricante: item.fabricante || item.manufacturer || "",
+      plannedDoses: parseQuantity(item.doses),
+      quantityTaken: String(item.quantityTaken ?? item.doses ?? ""),
+      quantityUsed: String(item.quantityUsed ?? item.doses ?? ""),
+      flaskCc: item.flaskCc || item.flasks || item.frascos || "",
+      dosePerBirdCc: item.dosePerBirdCc || "",
+      birdsVaccinated: getUsageBirdsVaccinated(item),
+      requiredFlasks: item.requiredFlasks || item.totalFrascos || "",
+      birdsPerFlask: item.birdsPerFlask || "",
+      applicationMethod: item.applicationMethod || item.via || request.applicationMethod || "",
+      source: item.source || "",
+    }))
+    .filter((item) => item.vaccineId && item.plannedDoses > 0);
+}
+
+function getUsageReturned(row) {
+  return Math.max(0, parseQuantity(row.quantityTaken) - parseQuantity(row.quantityUsed));
 }
 
 function getRecordSummary(record) {
@@ -344,6 +389,7 @@ function App() {
   const [temperatureForms, setTemperatureForms] = useState({});
   const [cameraRequestId, setCameraRequestId] = useState(null);
   const [doseMessages, setDoseMessages] = useState({});
+  const [usageForms, setUsageForms] = useState({});
   const [postponeForms, setPostponeForms] = useState({});
   const [farmFilter, setFarmFilter] = useState("TODAS");
   const [notificationContactDraft, setNotificationContactDraft] = useState("");
@@ -600,6 +646,23 @@ function App() {
     });
   }
 
+  function getUsageRows(request) {
+    return usageForms[request.id] || getRequestUsageItems(request);
+  }
+
+  function updateUsageRow(request, rowId, field, value) {
+    const rows = getUsageRows(request);
+
+    setUsageForms({
+      ...usageForms,
+      [request.id]: rows.map((row) => (
+        row.id === rowId
+          ? { ...row, [field]: value }
+          : row
+      )),
+    });
+  }
+
   function updatePostponeForm(requestId, field, value) {
     setPostponeForms({
       ...postponeForms,
@@ -731,6 +794,29 @@ function App() {
 
   async function completeRequest(request) {
     const form = temperatureForms[request.id] || {};
+    const usageRows = getUsageRows(request);
+    const invalidRow = usageRows.find((row) => {
+      const taken = parseQuantity(row.quantityTaken);
+      const used = parseQuantity(row.quantityUsed);
+
+      return taken < 0 || used < 0 || used > taken;
+    });
+    const totalUsed = usageRows.reduce((total, row) => total + parseQuantity(row.quantityUsed), 0);
+
+    if (usageRows.length === 0) {
+      setMessage("Informe a vacina usada antes de concluir.");
+      return;
+    }
+
+    if (invalidRow) {
+      setMessage("A quantidade usada nao pode ser negativa nem maior que a quantidade levada.");
+      return;
+    }
+
+    if (totalUsed <= 0) {
+      setMessage("Informe a quantidade realmente usada antes de concluir.");
+      return;
+    }
 
     setLoading(true);
     setMessage("");
@@ -740,8 +826,31 @@ function App() {
         await uploadTemperaturePhoto(request.id, form);
       }
 
-      await updateRequestStatus(request.id, "CONCLUIDA");
+      await updateRequestStatus(request.id, "CONCLUIDA", {
+        usageConfirmation: usageRows.map((row) => ({
+          id: row.id,
+          vaccineId: row.vaccineId,
+          vacina: row.vacina,
+          codigo: row.codigo,
+          fabricante: row.fabricante,
+          quantityTaken: parseQuantity(row.quantityTaken),
+          quantityUsed: parseQuantity(row.quantityUsed),
+          quantityReturned: getUsageReturned(row),
+          flaskCc: row.flaskCc,
+          dosePerBirdCc: row.dosePerBirdCc,
+          birdsVaccinated: row.birdsVaccinated,
+          requiredFlasks: row.requiredFlasks,
+          birdsPerFlask: row.birdsPerFlask,
+          applicationMethod: row.applicationMethod,
+          source: row.source,
+        })),
+      });
       setTemperatureForms((currentForms) => {
+        const nextForms = { ...currentForms };
+        delete nextForms[request.id];
+        return nextForms;
+      });
+      setUsageForms((currentForms) => {
         const nextForms = { ...currentForms };
         delete nextForms[request.id];
         return nextForms;
@@ -1185,7 +1294,7 @@ function App() {
 
                 {Array.isArray(request.vaccineUsages) && request.vaccineUsages.length > 0 && (
                   <div className="dose-box vaccine-list-box">
-                    <strong>Vacinas usadas</strong>
+                    <strong>Vacinas planejadas</strong>
                     <div className="vaccine-usage-grid">
                       {request.vaccineUsages.map((usage, index) => {
                         const flaskCc = String(usage.flaskCc || usage.flasks || usage.frascos || "").trim();
@@ -1347,6 +1456,61 @@ function App() {
                     Adiado para {formatPeriod(request.postponement.vaccinationStartDate, request.postponement.vaccinationEndDate)}
                     {request.postponement.reason ? ` - ${request.postponement.reason}` : ""}
                   </p>
+                )}
+
+                {status === "EM_ANDAMENTO" && (
+                  <div className="dose-box vaccine-list-box">
+                    <strong>Uso real das vacinas</strong>
+                    <div className="vaccine-usage-grid">
+                      {getUsageRows(request).map((row) => {
+                        const returned = getUsageReturned(row);
+
+                        return (
+                          <article className="vaccine-usage-card" key={row.id}>
+                            <div className="vaccine-usage-head">
+                              <div>
+                                <h4>{row.vacina || "Vacina"}</h4>
+                                <p>
+                                  {row.fabricante ? `Fabricante: ${row.fabricante}` : "Fabricante: -"}
+                                  {row.source ? ` | ${row.source}` : ""}
+                                </p>
+                              </div>
+                              <span>{formatQuantity(row.plannedDoses)} cc</span>
+                            </div>
+
+                            <div className="usage-confirm-grid">
+                              <label>
+                                Levou
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={row.quantityTaken}
+                                  onChange={(event) => updateUsageRow(request, row.id, "quantityTaken", event.target.value)}
+                                  placeholder="0"
+                                />
+                              </label>
+
+                              <label>
+                                Usou
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={row.quantityUsed}
+                                  onChange={(event) => updateUsageRow(request, row.id, "quantityUsed", event.target.value)}
+                                  placeholder="0"
+                                />
+                              </label>
+
+                              <div>
+                                <span>Sobrou</span>
+                                <strong>{formatQuantity(returned) || "0"} cc</strong>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
 
                 {status === "EM_ANDAMENTO" && (

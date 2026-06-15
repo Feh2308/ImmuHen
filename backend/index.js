@@ -1628,6 +1628,52 @@ app.patch("/api/vacitech/requests/:id/status", async (req, res) => {
   ));
 
   if (status === "CONCLUIDA") {
+    const usageConfirmation = normalizeVaccinationUsageConfirmation(
+      req.body.usageConfirmation || req.body.vaccineUsageConfirmation || req.body.actualVaccineUsages,
+      updatedRequest
+    );
+    const stockUsageResult = applyVaccinationStockUsage(tenantData, updatedRequest, usageConfirmation, {
+      now,
+      responsible: updatedRequest.vaccinatorName || "",
+    });
+
+    if (stockUsageResult.error) {
+      return res.status(400).json({
+        message: stockUsageResult.error,
+      });
+    }
+
+    updatedRequest = {
+      ...updatedRequest,
+      usageConfirmation,
+      actualVaccineUsages: stockUsageResult.actualUsages,
+      reversedPlannedOutputs: stockUsageResult.reversedPlannedOutputs.map((output) => ({
+        id: output.id,
+        vaccineId: output.vaccineId,
+        vacina: output.vacina,
+        doses: Number(output.doses || 0),
+        source: output.source || "",
+      })),
+      stockConfirmedAt: stockUsageResult.stockConfirmedAt,
+      stockConfirmedAtIso: stockUsageResult.stockConfirmedAtIso,
+    };
+    tenantData.requests = tenantData.requests.map((request) => (
+      String(request.id) === String(updatedRequest.id)
+        ? updatedRequest
+        : request
+    ));
+    tenantData.schedules = tenantData.schedules.map((schedule) => (
+      String(schedule.id) === String(updatedRequest.scheduleId)
+        ? {
+            ...schedule,
+            usageConfirmation,
+            actualVaccineUsages: stockUsageResult.actualUsages,
+            stockConfirmedAt: stockUsageResult.stockConfirmedAt,
+            stockConfirmedAtIso: stockUsageResult.stockConfirmedAtIso,
+          }
+        : schedule
+    ));
+
     const notification = createVaccinationCompletedNotification(updatedRequest);
 
     tenantData.notifications = removeNotificationsForRequest(
@@ -3871,6 +3917,273 @@ function normalizeVaccineUsages(value) {
     .filter((item) => item.vaccineId && item.doses > 0);
 }
 
+function isActiveStockOutput(output = {}) {
+  return !output.clearedAt;
+}
+
+function getTenantVaccineStock(tenantData = {}, vaccineId = "") {
+  const entrada = (tenantData.entries || [])
+    .filter((entry) => String(entry.vaccineId) === String(vaccineId))
+    .reduce((total, item) => total + Number(item.doses || 0), 0);
+  const saida = (tenantData.outputs || [])
+    .filter((output) => isActiveStockOutput(output) && String(output.vaccineId) === String(vaccineId))
+    .reduce((total, item) => total + Number(item.doses || 0), 0);
+
+  return entrada - saida;
+}
+
+function groupDoseTotals(items = [], field = "doses") {
+  return items.reduce((totals, item) => {
+    const vaccineId = String(item.vaccineId || "").trim();
+
+    if (!vaccineId) {
+      return totals;
+    }
+
+    totals[vaccineId] = (totals[vaccineId] || 0) + Number(item[field] || 0);
+    return totals;
+  }, {});
+}
+
+function getPlannedOutputsForRequest(tenantData = {}, request = {}) {
+  const requestId = String(request.id || "");
+  const scheduleId = String(request.scheduleId || "");
+  const plannedSources = new Set(["AGENDAMENTO", "SOLICITACAO_DOSES"]);
+
+  return (tenantData.outputs || []).filter((output) => (
+    isActiveStockOutput(output) &&
+    plannedSources.has(String(output.source || "").toUpperCase()) &&
+    (
+      (requestId && String(output.requestId || "") === requestId) ||
+      (scheduleId && String(output.scheduleId || "") === scheduleId)
+    )
+  ));
+}
+
+function normalizeVaccinationUsageConfirmation(value, request = {}) {
+  const sourceItems = Array.isArray(value) && value.length > 0
+    ? value
+    : buildVaccinationMaterials(request).map((item) => ({
+        ...item,
+        quantityTaken: item.doses,
+        quantityUsed: item.doses,
+        quantityReturned: 0,
+      }));
+
+  return sourceItems
+    .map((item, index) => {
+      const quantityUsed = parseDecimalValue(
+        item.quantityUsed ??
+        item.usedDoses ??
+        item.dosesUsed ??
+        item.quantidadeUsada ??
+        item.usada ??
+        item.used ??
+        item.doses ??
+        0
+      );
+      const quantityTakenRaw = parseDecimalValue(
+        item.quantityTaken ??
+        item.takenDoses ??
+        item.dosesTaken ??
+        item.quantidadeLevada ??
+        item.levada ??
+        item.taken ??
+        item.doses ??
+        quantityUsed
+      );
+      const quantityTaken = quantityTakenRaw > 0 ? quantityTakenRaw : quantityUsed;
+      const quantityReturned = Math.max(0, Number((quantityTaken - quantityUsed).toFixed(4)));
+
+      return {
+        id: String(item.id || item.vaccineId || `uso-real-${index + 1}`),
+        vaccineId: String(item.vaccineId || "").trim(),
+        vacina: String(item.vacina || item.name || "Vacina").trim(),
+        codigo: String(item.codigo || "").trim(),
+        fabricante: String(item.fabricante || item.manufacturer || "").trim(),
+        quantityTaken,
+        quantityUsed,
+        quantityReturned,
+        doses: quantityUsed,
+        flaskCc: String(item.flaskCc || item.flasks || item.frascos || "").trim(),
+        dosePerBirdCc: String(item.dosePerBirdCc || "").trim(),
+        birdsVaccinated: String(item.birdsVaccinated || item.avesVacinadas || "").trim(),
+        requiredCc: Number(item.requiredCc || item.totalCc || 0),
+        requiredFlasks: Number(item.requiredFlasks || item.totalFrascos || 0),
+        birdsPerFlask: Number(item.birdsPerFlask || 0),
+        applicationMethod: String(item.applicationMethod || item.via || "").trim(),
+        notes: String(item.notes || item.observacoes || "").trim(),
+      };
+    })
+    .filter((item) => item.vaccineId && (item.quantityTaken > 0 || item.quantityUsed > 0));
+}
+
+function validateVaccinationUsageConfirmation(tenantData, request, usageConfirmation) {
+  if (!usageConfirmation.length) {
+    return "Informe a vacina usada, quantidade levada e quantidade usada.";
+  }
+
+  const invalidNegative = usageConfirmation.find((item) => (
+    item.quantityTaken < 0 ||
+    item.quantityUsed < 0 ||
+    item.quantityReturned < 0
+  ));
+
+  if (invalidNegative) {
+    return "As quantidades nao podem ser negativas.";
+  }
+
+  const invalidUsed = usageConfirmation.find((item) => item.quantityUsed > item.quantityTaken);
+
+  if (invalidUsed) {
+    return `A quantidade usada de ${invalidUsed.vacina || "vacina"} nao pode ser maior que a quantidade levada.`;
+  }
+
+  const plannedByVaccine = groupDoseTotals(getPlannedOutputsForRequest(tenantData, request), "doses");
+  const usedByVaccine = groupDoseTotals(usageConfirmation, "quantityUsed");
+  const invalidStock = Object.entries(usedByVaccine).find(([vaccineId, used]) => {
+    const availableStock = getTenantVaccineStock(tenantData, vaccineId) + Number(plannedByVaccine[vaccineId] || 0);
+
+    return used > availableStock;
+  });
+
+  if (invalidStock) {
+    const [vaccineId, used] = invalidStock;
+    const vaccine = (tenantData.vaccines || []).find((item) => String(item.id) === String(vaccineId));
+    const availableStock = getTenantVaccineStock(tenantData, vaccineId) + Number(plannedByVaccine[vaccineId] || 0);
+
+    return `Quantidade usada maior que o estoque disponivel para ${vaccine?.nome || "a vacina"}. Usado: ${used}, estoque: ${availableStock}.`;
+  }
+
+  return "";
+}
+
+function applyVaccinationStockUsage(tenantData, request, usageConfirmation, metadata = {}) {
+  const existingActualOutputs = (tenantData.outputs || []).filter((output) => (
+    isActiveStockOutput(output) &&
+    String(output.source || "").toUpperCase() === "VACINACAO_CONFIRMADA_APP" &&
+    String(output.requestId || "") === String(request.id)
+  ));
+
+  if (request.stockConfirmedAt || existingActualOutputs.length > 0) {
+    return {
+      actualUsages: Array.isArray(request.actualVaccineUsages) && request.actualVaccineUsages.length > 0
+        ? request.actualVaccineUsages
+        : usageConfirmation.filter((item) => item.quantityUsed > 0).map((item) => ({
+            ...item,
+            doses: item.quantityUsed,
+          })),
+      reversedPlannedOutputs: Array.isArray(request.reversedPlannedOutputs) ? request.reversedPlannedOutputs : [],
+      stockConfirmedAt: request.stockConfirmedAt || existingActualOutputs[0]?.createdAt || new Date().toLocaleString("pt-BR"),
+      stockConfirmedAtIso: request.stockConfirmedAtIso || new Date().toISOString(),
+    };
+  }
+
+  const validationMessage = validateVaccinationUsageConfirmation(tenantData, request, usageConfirmation);
+
+  if (validationMessage) {
+    return { error: validationMessage };
+  }
+
+  const now = metadata.now || new Date();
+  const createdAt = now.toLocaleString("pt-BR");
+  const plannedOutputs = getPlannedOutputsForRequest(tenantData, request);
+  const outputBaseId = Date.now() + 300000;
+  const entryBaseId = Date.now() + 400000;
+  const actualUsages = usageConfirmation
+    .filter((item) => item.quantityUsed > 0)
+    .map((item, index) => ({
+      ...item,
+      id: item.id || `uso-real-${request.id}-${index}`,
+      doses: item.quantityUsed,
+    }));
+
+  plannedOutputs.forEach((output, index) => {
+    tenantData.entries.push({
+      id: entryBaseId + index,
+      source: "REVERSAO_BAIXA_PLANEJADA",
+      vaccineId: output.vaccineId,
+      vacina: output.vacina,
+      codigo: output.codigo || "-",
+      lote: `Reversao ${request.id}`,
+      doses: Number(output.doses || 0),
+      valorDose: 0,
+      valorTotal: 0,
+      valor: 0,
+      fornecedor: "Sistema",
+      observacao: `Reversao de baixa planejada (${output.source || "AGENDAMENTO"}) antes do uso real confirmado pelo vacinador.`,
+      requestId: request.id,
+      scheduleId: request.scheduleId || "",
+      data: now.toLocaleDateString("pt-BR"),
+      createdAt,
+    });
+  });
+
+  actualUsages.forEach((item, index) => {
+    tenantData.outputs.push({
+      id: outputBaseId + index,
+      groupId: `uso-real-${request.id}`,
+      source: "VACINACAO_CONFIRMADA_APP",
+      scheduleId: request.scheduleId || "",
+      requestId: request.id,
+      vaccineId: item.vaccineId,
+      vacina: item.vacina,
+      codigo: item.codigo,
+      fabricante: item.fabricante || "",
+      doses: item.quantityUsed,
+      quantityTaken: item.quantityTaken,
+      quantityUsed: item.quantityUsed,
+      quantityReturned: item.quantityReturned,
+      applicationMethod: item.applicationMethod || request.applicationMethod || "",
+      flaskCc: item.flaskCc,
+      dosePerBirdCc: item.dosePerBirdCc,
+      birdsVaccinated: item.birdsVaccinated,
+      requiredCc: item.requiredCc,
+      requiredFlasks: item.requiredFlasks,
+      birdsPerFlask: item.birdsPerFlask,
+      flasks: item.flaskCc,
+      birdLotId: request.birdLotId || "",
+      birdLotName: request.birdLotName || "",
+      programId: request.programId || "",
+      programDay: request.programDay || "",
+      destino: request.birdLotName || request.farmName || "Vacinacao",
+      responsavel: request.vaccinatorName || metadata.responsible || "Vacinador",
+      observacao: `Uso real confirmado pelo app. Levou ${formatQuantity(item.quantityTaken)} dose(s), usou ${formatQuantity(item.quantityUsed)} dose(s), sobrou ${formatQuantity(item.quantityReturned) || 0} dose(s).`,
+      data: now.toLocaleDateString("pt-BR"),
+      createdAt,
+    });
+  });
+
+  tenantData.vaccineAuditLog = [
+    {
+      id: `audit-vaccination-stock-${Date.now()}`,
+      type: "vaccination-stock-confirmed",
+      requestId: request.id,
+      scheduleId: request.scheduleId || "",
+      vaccineName: "Vacinacao concluida",
+      reason: "Baixa real de estoque confirmada pelo app do vacinador.",
+      responsible: request.vaccinatorName || metadata.responsible || "Vacinador",
+      usageConfirmation,
+      reversedPlannedOutputs: plannedOutputs.map((output) => ({
+        id: output.id,
+        vaccineId: output.vaccineId,
+        vacina: output.vacina,
+        doses: Number(output.doses || 0),
+        source: output.source || "",
+      })),
+      createdAt,
+    },
+    ...(tenantData.vaccineAuditLog || []),
+  ];
+
+  return {
+    actualUsages,
+    reversedPlannedOutputs: plannedOutputs,
+    stockConfirmedAt: createdAt,
+    stockConfirmedAtIso: now.toISOString(),
+  };
+}
+
 function parseDecimalValue(value) {
   const parsed = Number(String(value || "0").replace(",", "."));
 
@@ -4002,14 +4315,22 @@ function normalizeReturnedVaccines(value) {
 }
 
 function buildVaccinationMaterials(request = {}) {
+  const hasActualUsages = Array.isArray(request.actualVaccineUsages) && request.actualVaccineUsages.length > 0;
   const items = [
-    ...(Array.isArray(request.vaccineUsages)
+    ...(hasActualUsages
+      ? request.actualVaccineUsages.map((item) => ({
+          ...item,
+          doses: Number(item.quantityUsed || item.doses || 0),
+          source: "Uso real confirmado",
+        }))
+      : []),
+    ...(!hasActualUsages && Array.isArray(request.vaccineUsages)
       ? request.vaccineUsages.map((item) => ({
           ...item,
           source: "Agendamento",
         }))
       : []),
-    ...(Array.isArray(request.doseRequest?.confirmedItems)
+    ...(!hasActualUsages && Array.isArray(request.doseRequest?.confirmedItems)
       ? request.doseRequest.confirmedItems.map((item) => ({
           ...item,
           source: "Doses extras",

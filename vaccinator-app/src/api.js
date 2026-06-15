@@ -80,10 +80,10 @@ export function updateVaccinatorNotificationContact(vaccinatorId, notificationCo
   });
 }
 
-export function updateRequestStatus(requestId, status) {
+export function updateRequestStatus(requestId, status, payload = {}) {
   return apiRequest(`/api/vacitech/requests/${requestId}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, ...payload }),
   });
 }
 

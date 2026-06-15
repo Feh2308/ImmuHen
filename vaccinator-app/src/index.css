@@ -693,6 +693,42 @@ textarea:focus {
   color: #3f3f46;
 }
 
+.usage-confirm-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.usage-confirm-grid label,
+.usage-confirm-grid div {
+  background: #ffffff;
+  border: 1px solid #dcfce7;
+  border-radius: 12px;
+  color: #15803d;
+  display: grid;
+  font-size: 0.72rem;
+  font-weight: 900;
+  gap: 6px;
+  padding: 10px;
+  text-transform: uppercase;
+}
+
+.usage-confirm-grid input {
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  color: #18181b;
+  font-size: 0.95rem;
+  font-weight: 900;
+  min-height: 42px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.usage-confirm-grid strong {
+  color: #18181b;
+  font-size: 0.95rem;
+}
+
 .postpone-grid {
   display: grid;
   gap: 10px;
@@ -742,6 +778,7 @@ textarea:focus {
   .content-grid,
   .notification-contact-panel,
   .request-details,
+  .usage-confirm-grid,
   .request-extra {
     grid-template-columns: 1fr;
   }

@@ -381,8 +381,6 @@ function Schedule() {
   const {
     vaccines,
     entries,
-    addEntry,
-    addOutput,
     calculateStock,
   } = useVaccines();
   const [schedules, setSchedules] = useState(getStoredSchedules);
@@ -974,48 +972,6 @@ function getMapsLink(location) {
     ));
   }
 
-  function recordScheduleOutputs(savedSchedules, savedRequests, usages, selectedVaccinator) {
-    const outputBaseId = Date.now() + 100000;
-
-    savedSchedules.forEach((schedule, scheduleIndex) => {
-      const relatedRequest = savedRequests.find((request) => (
-        String(request.scheduleId) === String(schedule.id)
-      ));
-
-      usages.forEach((usage, usageIndex) => {
-        addOutput({
-          id: outputBaseId + (scheduleIndex * 100) + usageIndex,
-          groupId: `agendamento-${schedule.id}`,
-          source: "AGENDAMENTO",
-          scheduleId: schedule.id,
-          requestId: relatedRequest?.id || `request-${schedule.id}`,
-          vaccineId: usage.vaccineId,
-          vacina: usage.vacina,
-          codigo: usage.codigo,
-          fabricante: usage.fabricante || getVaccine(usage.vaccineId)?.fabricante || "",
-          doses: usage.doses,
-          laborCost: getUsageLaborCost(usage),
-          applicationMethod: usage.applicationMethod || schedule.applicationMethod || "",
-          flaskCc: usage.flaskCc || getUsageFlaskCc(usage),
-          dosePerBirdCc: usage.dosePerBirdCc || getUsageDosePerBirdCc(usage),
-          birdsVaccinated: usage.birdsVaccinated || getUsageBirdsVaccinated(usage),
-          requiredCc: usage.requiredCc || getUsageRequiredCc(usage),
-          requiredFlasks: usage.requiredFlasks || getUsageRequiredFlasks(usage),
-          birdsPerFlask: usage.birdsPerFlask || getUsageBirdsPerFlask(usage),
-          flasks: usage.flaskCc || getUsageFlaskCc(usage),
-          birdLotId: schedule.birdLotId || "",
-          birdLotName: schedule.birdLotName || "",
-          programId: schedule.programId || "",
-          programDay: schedule.programDay || "",
-          destino: schedule.birdLotName || schedule.farmName || "Programa",
-          responsavel: selectedVaccinator.name || "Vacinador",
-          observacao: `Baixa automatica do programa ${schedule.id}`,
-          data: new Date().toLocaleDateString(),
-        });
-      });
-    });
-  }
-
   async function cancelSchedule(id) {
     const scheduleToCancel = schedules.find((schedule) => String(schedule.id) === String(id));
 
@@ -1175,24 +1131,6 @@ function getMapsLink(location) {
       return;
     }
 
-    const programStockUsages = isProgramSchedule
-      ? periods.flatMap((period) => period.vaccineUsages || [])
-      : normalizedVaccineUsages;
-    const invalidStock = isProgramSchedule
-      ? getUsageStockError(programStockUsages, 1)
-      : getUsageStockError(normalizedVaccineUsages, periods.length);
-
-    if (invalidStock) {
-      const [vaccineId, doses] = invalidStock;
-      const vaccine = getVaccine(vaccineId);
-      const requiredDoses = isProgramSchedule ? doses : doses * periods.length;
-
-      alert(
-        `Doses maiores que o estoque para ${vaccine?.nome || "a vacina"}. Necessario: ${requiredDoses}, estoque: ${calculateStock(vaccineId)}.`
-      );
-      return;
-    }
-
     const baseScheduleId = Date.now();
     const farmProfile = getFarmProfile();
     const savedSchedules = [];
@@ -1300,14 +1238,6 @@ function getMapsLink(location) {
           message: `${savedRequest.farmName} enviou uma solicitacao de vacinacao${period.programDay ? ` do dia ${period.programDay}` : ""}.`,
         });
       }
-    }
-
-    if (isProgramSchedule) {
-      savedSchedules.forEach((schedule) => {
-        recordScheduleOutputs([schedule], savedRequests, schedule.vaccineUsages || [], selectedVaccinator);
-      });
-    } else {
-      recordScheduleOutputs(savedSchedules, savedRequests, normalizedVaccineUsages, selectedVaccinator);
     }
 
     setSchedules([
@@ -1430,34 +1360,6 @@ function getMapsLink(location) {
     if (!confirmed) {
       return;
     }
-
-    const previousUsages = Array.isArray(schedule.vaccineUsages) ? schedule.vaccineUsages : [];
-
-    previousUsages.forEach((usage, index) => {
-      if (!usage.vaccineId || !Number(usage.doses || 0)) {
-        return;
-      }
-
-      addEntry({
-        id: Date.now() + index,
-        source: "DEVOLUCAO_TROCA_VACINA",
-        vaccineId: usage.vaccineId,
-        vacina: usage.vacina,
-        codigo: usage.codigo || "-",
-        lote: `Troca programa ${schedule.id}`,
-        doses: Number(usage.doses || 0),
-        valorDose: 0,
-        valorTotal: 0,
-        valor: 0,
-        fornecedor: "Devolucao por troca",
-        observacao: `Devolucao automatica pela troca da vacina do programa ${schedule.id}`,
-        data: new Date().toLocaleDateString(),
-      });
-    });
-
-    recordScheduleOutputs([{ ...schedule, vaccineUsages: normalizedUsages }], readJson("requests", []), normalizedUsages, {
-      name: schedule.vaccinatorName || "Vacinador",
-    });
 
     try {
       const relatedRequest = readJson("requests", []).find((request) => (
@@ -1967,7 +1869,7 @@ function getMapsLink(location) {
                   Doses usadas por lote
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  Soma automatica das doses ja baixadas no programa vinculado ao lote.
+                  Soma automatica das doses confirmadas pelo vacinador no programa vinculado ao lote.
                 </p>
               </div>
               <span className="w-fit rounded-full bg-green-100 px-4 py-2 text-sm font-bold text-green-700">
@@ -2283,7 +2185,7 @@ function getMapsLink(location) {
                       Vacinas e doses
                     </p>
                     <p className="mt-1 text-sm text-zinc-500">
-                      Cada agendamento baixa essas doses automaticamente do estoque.
+                      O programa apenas planeja as doses. A baixa no estoque acontece quando o vacinador confirma o uso no app.
                     </p>
                   </div>
 

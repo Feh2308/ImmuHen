@@ -71,8 +71,10 @@ function Entries() {
     entries,
     entryEditRequests,
     addEntry,
+    clearUsedDoses,
     requestEntryValueEdit,
     calculateStock,
+    getUsedDosesByVaccine,
     getStockAlertLevel,
   } = useVaccines();
 
@@ -115,10 +117,19 @@ function Entries() {
   const [entryValueMessage, setEntryValueMessage] =
     useState("");
 
+  const [clearVaccineId, setClearVaccineId] =
+    useState("");
+
   const selectedVaccine = useMemo(() => (
     vaccines.find((vaccine) => String(vaccine.id) === String(vaccineId))
   ), [vaccineId, vaccines]);
+  const selectedClearVaccine = useMemo(() => (
+    vaccines.find((vaccine) => String(vaccine.id) === String(clearVaccineId))
+  ), [clearVaccineId, vaccines]);
   const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
+  const selectedClearUsedDoses = clearVaccineId
+    ? getUsedDosesByVaccine(clearVaccineId)
+    : 0;
 
   function getLastEntryDoseValue(vaccineIdValue) {
     const entry = [...entries]
@@ -288,6 +299,37 @@ function Entries() {
     setObservacao("");
   }
 
+  function limparDosesUsadasDaVacina() {
+    if (!clearVaccineId || !selectedClearVaccine) {
+      alert("Selecione a vacina para limpar as doses usadas.");
+      return;
+    }
+
+    if (selectedClearUsedDoses <= 0) {
+      alert("Esta vacina nao possui doses usadas para limpar.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Tem certeza que deseja limpar as doses usadas desta vacina? Essa acao nao apagara o estoque nem o historico, apenas zerara as doses usadas."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      clearUsedDoses({
+        vaccineId: clearVaccineId,
+        vaccineName: selectedClearVaccine.nome,
+        clearedBy: getCurrentUserLabel(),
+      });
+      alert("Doses usadas limpas para a vacina selecionada.");
+    } catch (error) {
+      alert(error.message || "Nao foi possivel limpar as doses usadas.");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
 
@@ -350,6 +392,10 @@ function Entries() {
                   <p>
                     Valor: <strong className="text-zinc-900">{getVaccineDoseValue(vacina) > 0 ? formatCurrency(getVaccineDoseValue(vacina)) : "-"}</strong>
                   </p>
+
+                  <p>
+                    Usadas: <strong className="text-zinc-900">{getUsedDosesByVaccine(vacina.id)} doses</strong>
+                  </p>
                 </div>
 
                 <button
@@ -368,6 +414,70 @@ function Entries() {
               </p>
             )}
           </div>
+        </div>
+
+        <div className="mt-8 rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-zinc-900">
+                Limpar doses usadas
+              </h2>
+
+              <p className="mt-2 text-zinc-500">
+                Selecione uma vacina especifica para zerar somente as doses usadas dela.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-4">
+            <label className="grid gap-3 rounded-2xl border border-green-100 bg-green-50 p-4 text-center text-sm font-semibold text-zinc-700 md:col-span-2">
+              Vacina
+              <select
+                value={clearVaccineId}
+                onChange={(event) => setClearVaccineId(event.target.value)}
+                className="rounded-2xl border border-green-100 bg-white p-4 text-center outline-none"
+              >
+                <option value="">
+                  Selecione a vacina
+                </option>
+
+                {sortedVaccines.map((vacina) => (
+                  <option
+                    key={vacina.id}
+                    value={vacina.id}
+                  >
+                    {vacina.codigo ? `${vacina.codigo} - ` : ""}{vacina.nome}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="grid place-items-center rounded-2xl border border-green-100 bg-green-50 p-5 text-center">
+              <p className="text-sm font-semibold text-zinc-600">
+                Estoque atual
+              </p>
+              <p className="mt-2 text-2xl font-bold text-green-700">
+                {clearVaccineId ? calculateStock(clearVaccineId) : 0}
+              </p>
+            </div>
+
+            <div className="grid place-items-center rounded-2xl border border-green-100 bg-green-50 p-5 text-center">
+              <p className="text-sm font-semibold text-zinc-600">
+                Doses usadas
+              </p>
+              <p className="mt-2 text-2xl font-bold text-green-700">
+                {selectedClearUsedDoses}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={limparDosesUsadasDaVacina}
+            className="mt-6 rounded-2xl bg-green-600 px-8 py-4 font-bold text-white transition hover:bg-green-700"
+          >
+            Limpar doses usadas da vacina
+          </button>
         </div>
 
         <div

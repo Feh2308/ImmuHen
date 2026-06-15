@@ -86,6 +86,10 @@ function getCurrentUserLabel() {
   }
 }
 
+function isActiveOutput(output) {
+  return !output?.clearedAt;
+}
+
 function getRequestStatus(status) {
   return String(status || "").trim().toLowerCase();
 }
@@ -155,6 +159,7 @@ function Chief() {
     updateEntry,
     removeEntry,
     clearUsedDoses,
+    getUsedDosesByVaccine,
     approveVaccineEdit,
     rejectVaccineEdit,
     approveEntryValueEdit,
@@ -236,6 +241,9 @@ function Chief() {
       observacao: "",
     });
 
+  const [clearVaccineId, setClearVaccineId] =
+    useState("");
+
   const storedRequests = readJson("requests", []);
   const storedSchedules = readJson("schedules", []);
   const storedCompletedVaccinations = readJson("completedVaccinations", []);
@@ -255,7 +263,9 @@ function Chief() {
 
   const summary = useMemo(() => {
     const totalEntries = entries.reduce((total, entry) => total + Number(entry.doses || 0), 0);
-    const totalOutputs = outputs.reduce((total, output) => total + Number(output.doses || 0), 0);
+    const totalOutputs = outputs
+      .filter(isActiveOutput)
+      .reduce((total, output) => total + Number(output.doses || 0), 0);
     const totalValue = entries.reduce((total, entry) => total + getEntryTotalValue(entry), 0);
     const pendingEdits =
       vaccineEditRequests.filter((request) => request.status === "pending").length +
@@ -283,7 +293,7 @@ function Chief() {
         .filter((entry) => String(entry.vaccineId) === String(vaccine.id))
         .reduce((total, entry) => total + Number(entry.doses || 0), 0);
       const saidas = outputs
-        .filter((output) => String(output.vaccineId) === String(vaccine.id))
+        .filter((output) => isActiveOutput(output) && String(output.vaccineId) === String(vaccine.id))
         .reduce((total, output) => total + Number(output.doses || 0), 0);
       const minimum = Number(stockAlertLevels[String(vaccine.id)] || 0);
       const saldo = entradas - saidas;
@@ -305,7 +315,7 @@ function Chief() {
   const usageChartRows = useMemo(() => {
     const rows = new Map();
 
-    outputs.forEach((output) => {
+    outputs.filter(isActiveOutput).forEach((output) => {
       const key = String(output.vaccineId || output.vacina || "sem-vacina");
       const current = rows.get(key) || {
         id: key,
@@ -342,14 +352,16 @@ function Chief() {
 
     const outputRows = outputs.map((output) => ({
       id: `baixa-${output.id}`,
-      type: "Baixa",
+      type: output.clearedAt ? "Baixa limpa" : "Baixa",
       vaccineName: output.vacina || "Vacina",
       doses: Number(output.doses || 0),
       date: output.data || output.createdAt || "-",
       detail: output.birdLotName || output.destino || output.programSuggestedName || "-",
       responsible: output.responsavel || "-",
-      observation: output.observacao || "Baixa registrada no estoque.",
-      className: "text-red-600",
+      observation: output.clearedAt
+        ? `Baixa preservada no historico e limpa em ${output.clearedAt}. ${output.clearedReason || ""}`.trim()
+        : output.observacao || "Baixa registrada no estoque.",
+      className: output.clearedAt ? "text-zinc-500" : "text-red-600",
     }));
 
     return [...entryRows, ...outputRows]
@@ -730,29 +742,44 @@ function Chief() {
   }
 
   function clearUsedDosesFromAdmin() {
-    if (outputs.length === 0) {
-      alert("Nao existem doses usadas para limpar.");
+    const selectedVaccine = vaccines.find((vaccine) => String(vaccine.id) === String(clearVaccineId));
+    const usedDoses = clearVaccineId ? getUsedDosesByVaccine(clearVaccineId) : 0;
+
+    if (!selectedVaccine) {
+      alert("Selecione a vacina para limpar as doses usadas.");
+      return;
+    }
+
+    if (usedDoses <= 0) {
+      alert("Esta vacina nao possui doses usadas para limpar.");
       return;
     }
 
     const confirmed = window.confirm(
-      `Limpar todas as doses usadas?\n\nIsso remove ${summary.totalOutputs} doses das baixas e o estoque sera recalculado.`
+      "Tem certeza que deseja limpar as doses usadas desta vacina? Essa acao nao apagara o estoque nem o historico, apenas zerara as doses usadas."
     );
 
     if (!confirmed) {
       return;
     }
 
-    const typed = window.prompt("Digite LIMPAR para confirmar.");
+    const typed = window.prompt(`Digite LIMPAR para confirmar a limpeza de ${usedDoses} dose(s) usadas de ${selectedVaccine.nome}.`);
 
     if (typed !== "LIMPAR") {
       alert("Operacao cancelada.");
       return;
     }
 
-    clearUsedDoses({
-      clearedBy: getCurrentUserLabel(),
-    });
+    try {
+      clearUsedDoses({
+        vaccineId: clearVaccineId,
+        vaccineName: selectedVaccine.nome,
+        clearedBy: getCurrentUserLabel(),
+      });
+      alert("Doses usadas limpas para a vacina selecionada.");
+    } catch (error) {
+      alert(error.message || "Nao foi possivel limpar as doses usadas.");
+    }
   }
 
   if (!authorized) {
@@ -1082,17 +1109,42 @@ function Chief() {
                 Controle de doses usadas
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Use somente se precisar zerar as baixas registradas e recalcular o estoque pelas entradas.
+                Selecione uma vacina especifica para zerar apenas as doses usadas dela.
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={clearUsedDosesFromAdmin}
-              className="w-fit rounded-2xl bg-red-600 px-6 py-4 font-bold text-white transition hover:bg-red-700"
-            >
-              Limpar doses usadas
-            </button>
+            <div className="grid w-full gap-3 md:max-w-2xl md:grid-cols-[1fr_auto_auto]">
+              <select
+                value={clearVaccineId}
+                onChange={(event) => setClearVaccineId(event.target.value)}
+                className="rounded-2xl border border-red-100 bg-red-50 p-4 font-semibold text-zinc-700 outline-none"
+              >
+                <option value="">
+                  Selecione a vacina
+                </option>
+
+                {sortedVaccines.map((vaccine) => (
+                  <option
+                    key={vaccine.id}
+                    value={vaccine.id}
+                  >
+                    {vaccine.codigo ? `${vaccine.codigo} - ` : ""}{vaccine.nome}
+                  </option>
+                ))}
+              </select>
+
+              <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-3 text-center text-sm font-bold text-red-700">
+                {clearVaccineId ? getUsedDosesByVaccine(clearVaccineId) : 0} usadas
+              </div>
+
+              <button
+                type="button"
+                onClick={clearUsedDosesFromAdmin}
+                className="rounded-2xl bg-red-600 px-6 py-4 font-bold text-white transition hover:bg-red-700"
+              >
+                Limpar
+              </button>
+            </div>
           </div>
         </section>
 

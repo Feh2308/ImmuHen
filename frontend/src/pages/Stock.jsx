@@ -36,6 +36,10 @@ function getAverageDoseCost(entries, vaccineId) {
   return totalDoses > 0 ? totalValue / totalDoses : 0;
 }
 
+function isActiveOutput(output) {
+  return !output?.clearedAt;
+}
+
 function getStatus(saldo) {
   if (saldo <= 0) {
     return {
@@ -131,7 +135,7 @@ function Stock() {
       }
     });
 
-    outputs.forEach((output) => {
+    outputs.filter(isActiveOutput).forEach((output) => {
       const row = ensureRow(output.vaccineId, output);
 
       row.saidas += Number(output.doses || 0);
@@ -167,14 +171,16 @@ function Stock() {
 
     const outputRows = outputs.map((output) => ({
       id: `saida-${output.id}`,
-      tipo: "Baixa",
+      tipo: output.clearedAt ? "Baixa limpa" : "Baixa",
       vacina: output.vacina,
       doses: Number(output.doses || 0),
       data: output.data || "-",
       detalhe: output.destino || "-",
       responsavel: output.responsavel || "-",
-      observacao: output.observacao || "-",
-      className: "text-red-500",
+      observacao: output.clearedAt
+        ? `Baixa preservada no historico e limpa em ${output.clearedAt}. ${output.clearedReason || ""}`.trim()
+        : output.observacao || "-",
+      className: output.clearedAt ? "text-zinc-500" : "text-red-500",
     }));
 
     return [...entryRows, ...outputRows].sort((a, b) => {
@@ -188,7 +194,7 @@ function Stock() {
   const lotCostRows = useMemo(() => {
     const rows = new Map();
 
-    outputs.forEach((output) => {
+    outputs.filter(isActiveOutput).forEach((output) => {
       const key = String(output.birdLotId || output.birdLotName || output.destino || "sem-lote");
       const row = rows.get(key) || {
         id: key,

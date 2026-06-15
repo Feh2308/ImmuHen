@@ -43,13 +43,17 @@ function parseQuantity(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isActiveOutput(output) {
+  return !output?.clearedAt;
+}
+
 function getStockFromLists(entries, outputs, vaccineId) {
   const entrada = entries
     .filter((entry) => String(entry.vaccineId) === String(vaccineId))
     .reduce((total, item) => total + Number(item.doses || 0), 0);
 
   const saida = outputs
-    .filter((output) => String(output.vaccineId) === String(vaccineId))
+    .filter((output) => isActiveOutput(output) && String(output.vaccineId) === String(vaccineId))
     .reduce((total, item) => total + Number(item.doses || 0), 0);
 
   return entrada - saida;
@@ -323,6 +327,22 @@ export function VaccineProvider({
     return Number(stockAlertLevels[String(id)] || 0);
   }
 
+  function hydrateInventoryState(state = {}) {
+    setVaccines(Array.isArray(state.vaccines) ? state.vaccines : []);
+    setEntries(Array.isArray(state.entries) ? state.entries : []);
+    setOutputs(Array.isArray(state.outputs) ? state.outputs : []);
+    setStockAlertLevels(
+      state.stockAlertLevels &&
+      typeof state.stockAlertLevels === "object" &&
+      !Array.isArray(state.stockAlertLevels)
+        ? state.stockAlertLevels
+        : {}
+    );
+    setVaccineEditRequests(Array.isArray(state.vaccineEditRequests) ? state.vaccineEditRequests : []);
+    setEntryEditRequests(Array.isArray(state.entryEditRequests) ? state.entryEditRequests : []);
+    setVaccineAuditLog(Array.isArray(state.vaccineAuditLog) ? state.vaccineAuditLog : []);
+  }
+
   function setStockAlertLevel(id, value) {
     const parsed = parseQuantity(value);
 
@@ -414,7 +434,7 @@ export function VaccineProvider({
   function removeVaccine(id) {
     const vaccine = vaccines.find((item) => String(item.id) === String(id));
     const removedEntries = entries.filter((entry) => String(entry.vaccineId) === String(id));
-    const removedOutputs = outputs.filter((output) => String(output.vaccineId) === String(id));
+    const removedOutputs = outputs.filter((output) => isActiveOutput(output) && String(output.vaccineId) === String(id));
     const removedEntryDoses = removedEntries.reduce((total, entry) => total + Number(entry.doses || 0), 0);
     const removedOutputDoses = removedOutputs.reduce((total, output) => total + Number(output.doses || 0), 0);
 
@@ -845,27 +865,56 @@ export function VaccineProvider({
     });
   }
 
+  function getUsedDosesByVaccine(vaccineId) {
+    return outputs
+      .filter((output) => isActiveOutput(output) && String(output.vaccineId) === String(vaccineId))
+      .reduce((total, output) => total + Number(output.doses || 0), 0);
+  }
+
   function clearUsedDoses(metadata = {}) {
-    const removedOutputDoses = outputs.reduce((total, output) => (
+    const vaccineId = String(metadata.vaccineId || "").trim();
+
+    if (!vaccineId) {
+      throw new Error("Selecione uma vacina para limpar as doses usadas.");
+    }
+
+    const clearedAt = new Date().toLocaleString("pt-BR");
+    const clearedAtIso = new Date().toISOString();
+    const affectedOutputs = outputs.filter((output) => (
+      isActiveOutput(output) &&
+      String(output.vaccineId) === String(vaccineId)
+    ));
+    const removedOutputDoses = affectedOutputs.reduce((total, output) => (
       total + Number(output.doses || 0)
     ), 0);
-    const affectedVaccines = new Set(
-      outputs
-        .map((output) => output.vacina || getVaccineName(output.vaccineId, "Vacina"))
-        .filter(Boolean)
-    );
+    const vaccineName = metadata.vaccineName || affectedOutputs[0]?.vacina || getVaccineName(vaccineId, "Vacina");
 
-    setOutputs([]);
+    if (removedOutputDoses <= 0) {
+      throw new Error("Esta vacina nao possui doses usadas para limpar.");
+    }
+
+    setOutputs((currentOutputs) => currentOutputs.map((output) => (
+      isActiveOutput(output) && String(output.vaccineId) === String(vaccineId)
+        ? {
+            ...output,
+            clearedAt,
+            clearedAtIso,
+            clearedBy: metadata.clearedBy || "Administrador",
+            clearedReason: metadata.reason || "Doses usadas limpas por vacina.",
+          }
+        : output
+    )));
     setVaccineAuditLog((currentLog) => [
       {
         id: `audit-used-doses-clear-${Date.now()}`,
         type: "used-doses-cleared",
-        vaccineName: "Doses usadas",
-        reason: "Doses usadas limpas pelo Administrador.",
+        vaccineId,
+        vaccineName,
+        reason: "Doses usadas limpas por vacina.",
         removedOutputDoses,
-        affectedVaccinesCount: affectedVaccines.size,
+        affectedOutputsCount: affectedOutputs.length,
         clearedBy: metadata.clearedBy || "Administrador",
-        createdAt: new Date().toLocaleString("pt-BR"),
+        createdAt: clearedAt,
       },
       ...currentLog,
     ]);
@@ -900,6 +949,8 @@ export function VaccineProvider({
         removeEntry,
         addOutput,
         clearUsedDoses,
+        getUsedDosesByVaccine,
+        hydrateInventoryState,
 
         calculateStock,
         getStockAlertLevel,

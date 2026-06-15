@@ -46,6 +46,12 @@ function getLaborCost(record) {
 }
 
 function getRequestTotalDoses(request) {
+  if (Array.isArray(request.actualVaccineUsages) && request.actualVaccineUsages.length > 0) {
+    return request.actualVaccineUsages.reduce((total, usage) => (
+      total + parseQuantity(usage.quantityUsed || usage.doses)
+    ), 0);
+  }
+
   return (request.vaccineUsages || []).reduce((total, usage) => total + Number(usage.doses || 0), 0);
 }
 
@@ -147,6 +153,12 @@ function getCompletionDate(record) {
 function getRecordMaterials(record) {
   const storedMaterials = Array.isArray(record.materialsUsed) && record.materialsUsed.length > 0
     ? record.materialsUsed
+    : Array.isArray(record.actualVaccineUsages) && record.actualVaccineUsages.length > 0
+      ? record.actualVaccineUsages.map((item) => ({
+          ...item,
+          doses: parseQuantity(item.quantityUsed || item.doses),
+          source: "Uso real confirmado",
+        }))
     : [
         ...(Array.isArray(record.vaccineUsages) ? record.vaccineUsages : []),
         ...(Array.isArray(record.doseRequest?.confirmedItems) ? record.doseRequest.confirmedItems : []),
@@ -188,9 +200,8 @@ function shouldShowRequest(request) {
 function Requests() {
   const {
     vaccines,
-    addEntry,
-    addOutput,
     calculateStock,
+    hydrateInventoryState,
   } = useVaccines();
   const [requests, setRequests] = useState(() => readJson("requests", []));
   const [notifications, setNotifications] = useState(() => readJson("vaccinatorNotifications", []));
@@ -211,6 +222,7 @@ function Requests() {
       setRequests(apiRequests);
       setNotifications(state.notifications || []);
       setCompletedVaccinations(state.completedVaccinations || []);
+      hydrateInventoryState(state);
       writeJson("requests", apiRequests, { silent: true });
       writeJson("vaccinatorNotifications", state.notifications || [], { silent: true });
       writeJson("completedVaccinations", state.completedVaccinations || [], { silent: true });
@@ -490,7 +502,7 @@ function Requests() {
       return;
     }
 
-    const confirmed = window.confirm("Confirmar as doses solicitadas e baixar do estoque?");
+    const confirmed = window.confirm("Confirmar as doses solicitadas como liberadas para o vacinador? O estoque so sera baixado quando o vacinador informar a quantidade usada no app.");
 
     if (!confirmed) {
       return;
@@ -498,25 +510,6 @@ function Requests() {
 
     try {
       const data = await confirmDoseRequestApi(request.id, confirmedItems);
-      const outputBaseId = Date.now() + 200000;
-
-      confirmedItems.forEach((item, index) => {
-        addOutput({
-          id: outputBaseId + index,
-          groupId: `dose-request-${request.id}`,
-          source: "SOLICITACAO_DOSES",
-          scheduleId: request.scheduleId,
-          requestId: request.id,
-          vaccineId: item.vaccineId,
-          vacina: item.vacina,
-          codigo: item.codigo,
-          doses: item.doses,
-          destino: request.farmName || "Solicitacao",
-          responsavel: request.vaccinatorName || "Vacinador",
-          observacao: `Doses extras confirmadas. ${request.doseRequest?.message || ""}`.trim(),
-          data: new Date().toLocaleDateString(),
-        });
-      });
 
       setRequests(data.requests || requests);
       setNotifications(data.notifications || notifications);
@@ -547,24 +540,6 @@ function Requests() {
       const pdfBlob = await confirmVaccinationCompletionApi(request.id, {
         completionTiming: completionForm.completionTiming,
         returnedVaccines,
-      });
-
-      returnedVaccines.forEach((item, index) => {
-        addEntry({
-          id: Date.now() + index,
-          source: "DEVOLUCAO_VACINA",
-          vaccineId: item.vaccineId,
-          vacina: item.vacina,
-          codigo: item.codigo || "-",
-          lote: `Devolucao ${request.id}`,
-          doses: item.doses,
-          valorDose: 0,
-          valorTotal: 0,
-          valor: 0,
-          fornecedor: request.vaccinatorName || "Vacinador",
-          observacao: `Devolucao de doses nao utilizadas na vacinacao ${request.id}`,
-          data: new Date().toLocaleDateString(),
-        });
       });
 
       const pdfUrl = URL.createObjectURL(pdfBlob);
@@ -776,29 +751,9 @@ function Requests() {
                           </select>
                         </label>
 
-                        {getCompletionForm(request).returnedVaccines.length > 0 && (
-                          <div className="grid gap-2">
-                            <p className="text-sm font-bold text-green-700">
-                              Devolucao de doses nao utilizadas
-                            </p>
-                            {getCompletionForm(request).returnedVaccines.map((item) => (
-                              <label
-                                key={item.id}
-                                className="grid gap-2 text-sm font-semibold text-zinc-700 sm:grid-cols-[minmax(0,1fr)_130px] sm:items-center"
-                              >
-                                <span>{item.vacina}</span>
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  value={item.doses}
-                                  onChange={(event) => updateReturnedDose(request, item.vaccineId, event.target.value)}
-                                  placeholder="0"
-                                  className="rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
-                                />
-                              </label>
-                            ))}
-                          </div>
-                        )}
+                        <p className="rounded-xl border border-green-100 bg-white p-3 text-sm font-semibold text-zinc-600">
+                          Uso real, doses levadas e sobras sao registrados pelo app do vacinador.
+                        </p>
 
                         <button
                           type="button"
@@ -853,6 +808,24 @@ function Requests() {
                   </div>
 
                 </div>
+
+                {Array.isArray(request.actualVaccineUsages) && request.actualVaccineUsages.length > 0 && (
+                  <div className="mt-5 rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Uso real confirmado pelo vacinador
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {request.actualVaccineUsages.map((usage, index) => (
+                        <span
+                          key={`${usage.vaccineId}-${index}`}
+                          className="rounded-full bg-white px-3 py-1 text-sm font-bold text-zinc-700"
+                        >
+                          {usage.vacina || "Vacina"}: levou {formatQuantity(usage.quantityTaken) || 0}, usou {formatQuantity(usage.quantityUsed || usage.doses) || 0}, sobrou {formatQuantity(usage.quantityReturned) || 0}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {Array.isArray(request.vaccineUsages) && request.vaccineUsages.length > 0 && (
                   <div className="mt-5 rounded-xl border border-green-100 bg-green-50 p-4">
@@ -986,7 +959,7 @@ function Requests() {
                         {doseRequestConfirmed ? (
                           <div className="mt-4 rounded-xl border border-green-100 bg-green-50 p-4">
                             <p className="font-bold text-green-700">
-                              Doses confirmadas em {request.doseRequest.confirmedAt}
+                              Doses liberadas em {request.doseRequest.confirmedAt}
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
                               {(request.doseRequest.confirmedItems || []).map((item, index) => (
@@ -1003,7 +976,7 @@ function Requests() {
                           <div className="mt-4 grid gap-3 rounded-xl border border-green-100 bg-green-50 p-4">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                               <p className="font-bold text-zinc-900">
-                                Confirmar baixa no estoque
+                                Confirmar doses liberadas
                               </p>
                               <button
                                 type="button"

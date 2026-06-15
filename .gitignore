@@ -8,3 +8,4 @@ backend/vacitech-data.json
 backend/dev.db
 .codex-test/
 backend/.codex-test/
+backups/
