@@ -33,6 +33,7 @@ const subscriptionPrice = Number(process.env.SUBSCRIPTION_PRICE || 99.9);
 const subscriptionCurrency = process.env.SUBSCRIPTION_CURRENCY || "BRL";
 const subscriptionEnforcement = String(process.env.SUBSCRIPTION_ENFORCEMENT || "on").toLowerCase() !== "off";
 const authSecret = process.env.AUTH_SECRET || "granja-system-dev-secret";
+const authTokenTtlSeconds = Number(process.env.AUTH_TOKEN_TTL_SECONDS || 60 * 60 * 24 * 30);
 const smtpHost = process.env.SMTP_HOST || "";
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpUser = process.env.SMTP_USER || "";
@@ -139,6 +140,52 @@ const LEGACY_ROLE_ALIASES = Object.freeze({
   visualizador: "VISUALIZADOR",
   viewer: "VISUALIZADOR",
 });
+const SAAS_ROLES = Object.freeze({
+  ADMIN_GLOBAL: "ADMIN_GLOBAL",
+  ADMIN_GRANJA: "ADMIN_GRANJA",
+  FUNCIONARIO: "FUNCIONARIO",
+  VISUALIZADOR: "VISUALIZADOR",
+});
+const ACTION_PERMISSIONS = Object.freeze({
+  VACCINES_READ: "vaccines.read",
+  VACCINES_CREATE: "vaccines.create",
+  VACCINES_UPDATE: "vaccines.update",
+  VACCINES_DELETE: "vaccines.delete",
+  STOCK_READ: "stock.read",
+  STOCK_ADJUST: "stock.adjust",
+  SCHEDULE_READ: "schedule.read",
+  SCHEDULE_CREATE: "schedule.create",
+  SCHEDULE_UPDATE: "schedule.update",
+  REQUESTS_READ: "requests.read",
+  REQUESTS_UPDATE: "requests.update",
+  REPORTS_READ: "reports.read",
+  USERS_MANAGE: "users.manage",
+  BILLING_MANAGE: "billing.manage",
+});
+const ALL_ACTION_PERMISSIONS = Object.freeze(Object.values(ACTION_PERMISSIONS));
+const ROLE_ACTION_PERMISSIONS = Object.freeze({
+  [SAAS_ROLES.ADMIN_GLOBAL]: ALL_ACTION_PERMISSIONS,
+  [SAAS_ROLES.ADMIN_GRANJA]: ALL_ACTION_PERMISSIONS,
+  [SAAS_ROLES.FUNCIONARIO]: [
+    ACTION_PERMISSIONS.VACCINES_READ,
+    ACTION_PERMISSIONS.VACCINES_CREATE,
+    ACTION_PERMISSIONS.STOCK_READ,
+    ACTION_PERMISSIONS.STOCK_ADJUST,
+    ACTION_PERMISSIONS.SCHEDULE_READ,
+    ACTION_PERMISSIONS.SCHEDULE_CREATE,
+    ACTION_PERMISSIONS.SCHEDULE_UPDATE,
+    ACTION_PERMISSIONS.REQUESTS_READ,
+    ACTION_PERMISSIONS.REQUESTS_UPDATE,
+    ACTION_PERMISSIONS.REPORTS_READ,
+  ],
+  [SAAS_ROLES.VISUALIZADOR]: [
+    ACTION_PERMISSIONS.VACCINES_READ,
+    ACTION_PERMISSIONS.STOCK_READ,
+    ACTION_PERMISSIONS.SCHEDULE_READ,
+    ACTION_PERMISSIONS.REQUESTS_READ,
+    ACTION_PERMISSIONS.REPORTS_READ,
+  ],
+});
 
 app.set("trust proxy", 1);
 app.use(helmet({
@@ -150,6 +197,9 @@ app.use(cors({
     ? "*"
     : corsOrigin.split(",").map((origin) => origin.trim()).filter(Boolean),
 }));
+if (process.env.NODE_ENV === "production" && corsOrigin === "*") {
+  console.warn("CORS_ORIGIN esta como * em producao. Configure os dominios do ImmuHen antes do uso comercial.");
+}
 app.use(express.json({ limit: "12mb" }));
 app.use("/login", authLimiter);
 app.use("/api/accounts/register", authLimiter);
@@ -882,6 +932,8 @@ app.use("/api/vacitech", async (req, res, next) => {
   req.account = normalizeAccountAccess(accountContext.account);
   req.tenantId = req.account.tenantId;
   req.tenantData = tenantData;
+  req.saasRole = normalizeSaasRole(req.account.saasRole || req.account.role);
+  req.actionPermissions = getAccountActionPermissions(req.account);
   syncTenantRecord(req.tenantId, tenantData).catch((error) => {
     console.log(error.message || error);
   });
@@ -3345,6 +3397,111 @@ function hasAnyPermission(account, permissions = []) {
   return permissions.some((permission) => hasPermission(account, permission));
 }
 
+function normalizeSaasRole(role) {
+  const normalizedRole = String(role || "").trim().toUpperCase();
+
+  if (Object.values(SAAS_ROLES).includes(normalizedRole)) {
+    return normalizedRole;
+  }
+
+  if (normalizedRole === "ADMIN") {
+    return SAAS_ROLES.ADMIN_GRANJA;
+  }
+
+  if (normalizedRole === "GERENTE" || normalizedRole === "FUNCIONARIO") {
+    return SAAS_ROLES.FUNCIONARIO;
+  }
+
+  return SAAS_ROLES.VISUALIZADOR;
+}
+
+function getAccountActionPermissions(account) {
+  const normalizedAccount = normalizeAccountAccess(account);
+
+  if (!normalizedAccount) {
+    return [];
+  }
+
+  const saasRole = normalizeSaasRole(normalizedAccount.saasRole || normalizedAccount.role);
+  const rolePermissions = ROLE_ACTION_PERMISSIONS[saasRole] || [];
+  const directPermissions = Array.isArray(normalizedAccount.actionPermissions)
+    ? normalizedAccount.actionPermissions
+    : [];
+
+  return Array.from(new Set([...rolePermissions, ...directPermissions]))
+    .filter((permission) => ALL_ACTION_PERMISSIONS.includes(permission));
+}
+
+function hasActionPermission(account, permission) {
+  return getAccountActionPermissions(account).includes(permission);
+}
+
+function requireTenant(req, res, next) {
+  const tenantId = req.tenantId || req.account?.tenantId;
+
+  if (!tenantId) {
+    return res.status(403).json({
+      message: "Tenant/granja nao identificado para esta operacao.",
+    });
+  }
+
+  if (normalizeSaasRole(req.account?.saasRole || req.account?.role) === SAAS_ROLES.ADMIN_GLOBAL) {
+    return res.status(403).json({
+      message: "ADMIN_GLOBAL deve usar apenas rotas globais.",
+    });
+  }
+
+  req.tenantId = tenantId;
+  return next();
+}
+
+function requireActionPermission(permission) {
+  return (req, res, next) => {
+    if (!hasActionPermission(req.account, permission)) {
+      return res.status(403).json({
+        message: "Seu usuario nao tem permissao para esta acao.",
+        requiredPermission: permission,
+      });
+    }
+
+    return next();
+  };
+}
+
+async function recordAuditLog({
+  tenantId,
+  userId,
+  action,
+  entity,
+  entityId,
+  oldValue,
+  newValue,
+  ip,
+  userAgent,
+} = {}) {
+  if (!action || !entity) {
+    return;
+  }
+
+  try {
+    await prisma.auditLog.create({
+      data: {
+        tenantId: tenantId || null,
+        userId: userId || null,
+        action: String(action),
+        entity: String(entity),
+        entityId: entityId ? String(entityId) : null,
+        oldValue: oldValue === undefined ? undefined : oldValue,
+        newValue: newValue === undefined ? undefined : newValue,
+        ip: ip || null,
+        userAgent: userAgent || null,
+      },
+    });
+  } catch (error) {
+    console.log(`Audit log ignored: ${error.message || error}`);
+  }
+}
+
 function tagItemsWithTenant(items = [], tenantId = "") {
   return items.map((item) => (
     item && typeof item === "object"
@@ -3532,13 +3689,21 @@ function hashPasswordWithSecret(password, secret) {
 
 function createAuthToken(account) {
   const normalizedAccount = normalizeAccountAccess(account);
-  const payload = Buffer.from(JSON.stringify({
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const tokenPayload = {
     accessType: "TENANT_USER",
     accountId: normalizedAccount.id,
     tenantId: normalizedAccount.tenantId,
     email: normalizedAccount.email,
     role: normalizedAccount.role,
-  })).toString("base64url");
+    iat: issuedAt,
+  };
+
+  if (authTokenTtlSeconds > 0) {
+    tokenPayload.exp = issuedAt + authTokenTtlSeconds;
+  }
+
+  const payload = Buffer.from(JSON.stringify(tokenPayload)).toString("base64url");
   const signature = crypto
     .createHmac("sha256", authSecret)
     .update(payload)
@@ -3569,6 +3734,11 @@ function getRequestAccount(req, data) {
 
   try {
     const parsedPayload = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+
+    if (parsedPayload.exp && Date.now() >= Number(parsedPayload.exp) * 1000) {
+      return null;
+    }
+
     const account = data.accounts.find((item) => (
       item.id === parsedPayload.accountId &&
       item.tenantId === parsedPayload.tenantId

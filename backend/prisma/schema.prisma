@@ -8,11 +8,12 @@ datasource db {
 }
 
 model Vaccinator {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String
-  phone     String
-  createdAt DateTime @default(now())
+  id                    Int                    @id @default(autoincrement())
+  name                  String
+  email                 String
+  phone                 String
+  createdAt             DateTime               @default(now())
+  vaccinatorTenantLinks VaccinatorTenantLink[]
 }
 
 model Schedule {
@@ -77,24 +78,41 @@ model AppUser {
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   role            Role?            @relation(fields: [roleId], references: [id])
   userPermissions UserPermission[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
 
   @@index([tenantId])
   @@index([roleId])
 }
 
 model Tenant {
-  id             String    @id
-  name           String
-  identifier     String    @unique
-  domain         String?
-  logoDataUrl    String?
-  primaryColor   String    @default("#16a34a")
-  secondaryColor String    @default("#dcfce7")
-  status         String    @default("ACTIVE")
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  users          AppUser[]
-  birdLots       BirdLot[]
+  id                    String                  @id
+  name                  String
+  identifier            String                  @unique
+  domain                String?
+  logoDataUrl           String?
+  primaryColor          String                  @default("#16a34a")
+  secondaryColor        String                  @default("#dcfce7")
+  status                String                  @default("ACTIVE")
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  users                 AppUser[]
+  birdLots              BirdLot[]
+  farmProfile           FarmProfile?
+  vaccines              Vaccine[]
+  vaccineEntries        VaccineEntry[]
+  stockMovements        StockMovement[]
+  stockAlerts           StockAlert[]
+  vaccinationSchedules  VaccinationSchedule[]
+  vaccinationRequests   VaccinationRequest[]
+  completedVaccinations CompletedVaccination[]
+  temperaturePhotos     TemperaturePhoto[]
+  doseRequests          DoseRequest[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  subscription          Subscription?
+  payments              Payment[]
+  vaccinatorTenantLinks VaccinatorTenantLink[]
 }
 
 model Role {
@@ -136,4 +154,326 @@ model UserPermission {
   createdAt    DateTime   @default(now())
 
   @@id([userId, permissionId])
+}
+
+model FarmProfile {
+  id                  String    @id @default(cuid())
+  tenantId            String    @unique
+  farmName            String
+  city                String?
+  document            String?
+  owner               String?
+  locationUrl         String?
+  notificationContact String?
+  logoDataUrl         String?
+  primaryColor        String?
+  secondaryColor      String?
+  ranches             Json?
+  importantContacts   Json?
+  metadata            Json?
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+}
+
+model Vaccine {
+  id                   String          @id @default(cuid())
+  tenantId             String
+  code                 String?
+  name                 String
+  manufacturer         String?
+  dosesPerBottle       Decimal?        @db.Decimal(14, 4)
+  defaultDosePerBirdCc Decimal?        @db.Decimal(14, 4)
+  valuePerDose         Decimal?        @db.Decimal(14, 6)
+  notes                String?
+  metadata             Json?
+  deletedAt            DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  entries              VaccineEntry[]
+  movements            StockMovement[]
+  alerts               StockAlert[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, name])
+}
+
+model VaccineEntry {
+  id             String    @id @default(cuid())
+  tenantId       String
+  vaccineId      String?
+  lot            String?
+  expiresAt      DateTime?
+  bottles        Decimal?  @db.Decimal(14, 4)
+  dosesPerBottle Decimal?  @db.Decimal(14, 4)
+  doses          Decimal   @default(0) @db.Decimal(14, 4)
+  valuePerDose   Decimal?  @db.Decimal(14, 6)
+  totalValue     Decimal?  @db.Decimal(14, 2)
+  supplier       String?
+  notes          String?
+  metadata       Json?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  vaccine        Vaccine?  @relation(fields: [vaccineId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, vaccineId])
+  @@index([tenantId, expiresAt])
+}
+
+model StockMovement {
+  id          String    @id @default(cuid())
+  tenantId    String
+  vaccineId   String?
+  birdLotId   Int?
+  type        String
+  source      String?
+  sourceId    String?
+  doses       Decimal   @default(0) @db.Decimal(14, 4)
+  unitCost    Decimal?  @db.Decimal(14, 6)
+  totalCost   Decimal?  @db.Decimal(14, 2)
+  notes       String?
+  metadata    Json?
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  vaccine     Vaccine?  @relation(fields: [vaccineId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, vaccineId])
+  @@index([tenantId, birdLotId])
+  @@index([tenantId, type])
+  @@index([tenantId, source, sourceId])
+}
+
+model StockAlert {
+  id              String    @id @default(cuid())
+  tenantId        String
+  vaccineId       String?
+  minimumQuantity Decimal   @default(0) @db.Decimal(14, 4)
+  active          Boolean   @default(true)
+  lastTriggeredAt DateTime?
+  metadata        Json?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  vaccine         Vaccine?  @relation(fields: [vaccineId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, vaccineId])
+}
+
+model VaccinationSchedule {
+  id             String    @id @default(cuid())
+  tenantId       String
+  vaccinatorId   String?
+  birdLotId      Int?
+  programId      String?
+  programDay     Int?
+  status         String    @default("PENDING")
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+  payload        Json?
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, birdLotId])
+  @@index([tenantId, vaccinatorId])
+}
+
+model VaccinationRequest {
+  id           String    @id @default(cuid())
+  tenantId     String
+  scheduleId   String?
+  vaccinatorId String?
+  status       String    @default("PENDING")
+  payload      Json?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, scheduleId])
+  @@index([tenantId, vaccinatorId])
+}
+
+model CompletedVaccination {
+  id                String             @id @default(cuid())
+  tenantId          String
+  requestId         String?
+  scheduleId        String?
+  vaccinatorId      String?
+  status            String             @default("COMPLETED")
+  completedAt       DateTime?
+  payload           Json?
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  temperaturePhotos TemperaturePhoto[]
+
+  @@index([tenantId])
+  @@index([tenantId, completedAt])
+  @@index([tenantId, vaccinatorId])
+}
+
+model TemperaturePhoto {
+  id                     String                @id @default(cuid())
+  tenantId               String
+  requestId              String?
+  completedVaccinationId String?
+  imageUrl               String
+  capturedAt             DateTime?
+  metadata               Json?
+  deletedAt              DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  tenant                 Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  completedVaccination   CompletedVaccination? @relation(fields: [completedVaccinationId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, requestId])
+  @@index([tenantId, completedVaccinationId])
+}
+
+model DoseRequest {
+  id           String    @id @default(cuid())
+  tenantId     String
+  requestId    String?
+  vaccinatorId String?
+  status       String    @default("PENDING")
+  message      String?
+  items        Json?
+  metadata     Json?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, requestId])
+  @@index([tenantId, vaccinatorId])
+}
+
+model Notification {
+  id           String    @id @default(cuid())
+  tenantId     String
+  userId       String?
+  vaccinatorId String?
+  type         String
+  title        String
+  message      String?
+  payload      Json?
+  readAt       DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user         AppUser?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@index([tenantId, vaccinatorId])
+  @@index([tenantId, readAt])
+}
+
+model AuditLog {
+  id        String    @id @default(cuid())
+  tenantId  String?
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  oldValue  Json?
+  newValue  Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  tenant    Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  user      AppUser?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@index([tenantId, entity, entityId])
+  @@index([action])
+}
+
+model Subscription {
+  id                 String    @id @default(cuid())
+  tenantId           String    @unique
+  status             String    @default("PENDING")
+  plan               String?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  graceUntil         DateTime?
+  blockedAt          DateTime?
+  lastPaymentAt      DateTime?
+  provider           String?
+  providerCustomerId String?
+  metadata           Json?
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  payments           Payment[]
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  tenantId          String
+  subscriptionId    String?
+  provider          String?
+  providerPaymentId String?
+  status            String        @default("PENDING")
+  amount            Decimal?      @db.Decimal(14, 2)
+  currency          String        @default("BRL")
+  paidAt            DateTime?
+  payload           Json?
+  deletedAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, subscriptionId])
+  @@index([provider, providerPaymentId])
+}
+
+model VaccinatorTenantLink {
+  id              String      @id @default(cuid())
+  tenantId        String
+  vaccinatorId    Int?
+  vaccinatorEmail String
+  vaccinatorPhone String?
+  vaccinatorName  String?
+  status          String      @default("ACTIVE")
+  linkedAt        DateTime?
+  metadata        Json?
+  deletedAt       DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  vaccinator      Vaccinator? @relation(fields: [vaccinatorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([vaccinatorId])
+  @@index([vaccinatorEmail])
 }
