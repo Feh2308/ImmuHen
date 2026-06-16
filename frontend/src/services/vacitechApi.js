@@ -154,6 +154,12 @@ export async function deleteVaccinatorApi(id) {
   });
 }
 
+export async function sendVaccinatorNotificationTestApi(id) {
+  return apiRequest(`/api/vacitech/vaccinators/${id}/notification-test`, {
+    method: "POST",
+  });
+}
+
 export async function fetchRequestsApi() {
   return apiRequest("/api/vacitech/requests");
 }

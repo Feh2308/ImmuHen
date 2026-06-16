@@ -34,12 +34,15 @@ const subscriptionCurrency = process.env.SUBSCRIPTION_CURRENCY || "BRL";
 const subscriptionEnforcement = String(process.env.SUBSCRIPTION_ENFORCEMENT || "on").toLowerCase() !== "off";
 const authSecret = process.env.AUTH_SECRET || "granja-system-dev-secret";
 const authTokenTtlSeconds = Number(process.env.AUTH_TOKEN_TTL_SECONDS || 60 * 60 * 24 * 30);
-const smtpHost = process.env.SMTP_HOST || "";
-const smtpPort = Number(process.env.SMTP_PORT || 587);
-const smtpUser = process.env.SMTP_USER || "";
-const smtpPass = process.env.SMTP_PASS || "";
-const smtpSecure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || smtpPort === 465;
-const notificationFromEmail = process.env.NOTIFICATION_FROM_EMAIL || smtpUser || "";
+const smtpEndpoint = parseSmtpEndpoint(process.env.SMTP_HOST || "", process.env.SMTP_PORT || "");
+const smtpHost = smtpEndpoint.host;
+const smtpPort = Number(process.env.SMTP_PORT || smtpEndpoint.port || 587);
+const smtpUser = String(process.env.SMTP_USER || "").trim();
+const smtpPass = String(process.env.SMTP_PASS || "").trim();
+const smtpSecure = String(process.env.SMTP_SECURE || "").toLowerCase() === "true" || smtpEndpoint.secure || smtpPort === 465;
+const resendApiKey = String(process.env.RESEND_API_KEY || "").trim();
+const notificationFromEmail = String(process.env.NOTIFICATION_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || smtpUser || "").trim();
+const emailProvider = String(process.env.EMAIL_PROVIDER || (resendApiKey ? "resend" : "smtp")).trim().toLowerCase();
 const defaultTenantPrimaryColor = "#16a34a";
 const defaultTenantSecondaryColor = "#dcfce7";
 const TENANT_STATUS = Object.freeze({
@@ -965,9 +968,7 @@ app.get("/api/vacitech/notifications/status", async (req, res) => {
   const tenantData = getTenantData(data, req.tenantId);
 
   res.json({
-    configured: {
-      email: hasSmtpConfig(),
-    },
+    configured: getEmailDeliveryConfigStatus(),
     contact: getFarmNotificationContact(data, req.tenantId, tenantData),
     recentOutbox: (tenantData.notificationOutbox || []).slice(0, 12),
   });
@@ -1482,6 +1483,47 @@ app.delete("/api/vacitech/vaccinators/:id", async (req, res) => {
   res.json({
     success: true,
     vaccinators: tenantData.vaccinators,
+  });
+});
+
+app.post("/api/vacitech/vaccinators/:id/notification-test", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const vaccinator = tenantData.vaccinators.find((item) => String(item.id) === String(req.params.id));
+
+  if (!vaccinator) {
+    return res.status(404).json({
+      message: "Vacinador nao encontrado.",
+    });
+  }
+
+  const notification = {
+    id: `vaccinator-test-${Date.now()}`,
+    type: "TEST_VACCINATOR_NOTIFICATION",
+    title: "Teste de notificacao ImmuHen Vacinador",
+    message: "Se voce recebeu este email, as notificacoes do vacinador estao funcionando.",
+    vaccinatorId: vaccinator.id,
+    vaccinatorName: vaccinator.name,
+    vaccinatorEmail: vaccinator.email,
+    vaccinatorPhone: vaccinator.phone,
+    vaccinatorNotificationContact: vaccinator.notificationContact,
+    farmName: tenantData.farmProfile?.farmName || "Granja",
+    createdAt: new Date().toLocaleString("pt-BR"),
+    read: false,
+  };
+  const delivered = await queueVaccinatorExternalNotification(tenantData, notification, vaccinator, {
+    dedupeKey: `test-vaccinator-notification:${vaccinator.id}:${Date.now()}`,
+  });
+
+  tenantData.notifications.push(notification);
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    notification,
+    delivered,
+    notifications: tenantData.notifications,
+    notificationOutbox: tenantData.notificationOutbox,
   });
 });
 
@@ -4892,10 +4934,75 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function parseSmtpEndpoint(hostValue, portValue = "") {
+  let value = String(hostValue || "").trim();
+  let secure = false;
+
+  if (!value) {
+    return {
+      host: "",
+      port: Number(portValue || 0) || 0,
+      secure,
+    };
+  }
+
+  if (value.startsWith("smtps://")) {
+    secure = true;
+    value = value.replace(/^smtps:\/\//i, "");
+  } else {
+    value = value.replace(/^smtp:\/\//i, "");
+  }
+
+  value = value.replace(/\/+$/, "");
+
+  const hostPortMatch = value.match(/^([^:/]+):(\d+)$/);
+
+  if (hostPortMatch) {
+    return {
+      host: hostPortMatch[1].trim(),
+      port: Number(portValue || hostPortMatch[2] || 0) || 0,
+      secure,
+    };
+  }
+
+  return {
+    host: value,
+    port: Number(portValue || 0) || 0,
+    secure,
+  };
+}
+
 let smtpTransportPromise = null;
 
 function hasSmtpConfig() {
   return Boolean(smtpHost && smtpUser && smtpPass && notificationFromEmail);
+}
+
+function hasResendConfig() {
+  return Boolean(resendApiKey && notificationFromEmail);
+}
+
+function hasEmailConfig() {
+  return hasResendConfig() || hasSmtpConfig();
+}
+
+function getEmailDeliveryConfigStatus() {
+  return {
+    provider: hasResendConfig() && emailProvider === "resend" ? "resend" : "smtp",
+    email: hasEmailConfig(),
+    smtp: {
+      configured: hasSmtpConfig(),
+      host: smtpHost ? smtpHost.replace(/^(.{3}).+(.{3})$/, "$1***$2") : "",
+      port: smtpPort,
+      secure: smtpSecure,
+      userConfigured: Boolean(smtpUser),
+      fromConfigured: Boolean(notificationFromEmail),
+    },
+    resend: {
+      configured: hasResendConfig(),
+      fromConfigured: Boolean(notificationFromEmail),
+    },
+  };
 }
 
 async function createSmtpTransport() {
@@ -4950,6 +5057,36 @@ async function getSmtpTransport() {
   return smtpTransportPromise;
 }
 
+async function sendEmailWithResend(outboxItem) {
+  if (!hasResendConfig()) {
+    outboxItem.status = "PENDING_CONFIG";
+    outboxItem.lastError = "Configure RESEND_API_KEY e NOTIFICATION_FROM_EMAIL.";
+    return false;
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: notificationFromEmail,
+      to: [outboxItem.to],
+      subject: outboxItem.subject,
+      text: outboxItem.message,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.message || data.error || "Nao foi possivel enviar email pelo Resend.");
+  }
+
+  outboxItem.providerMessageId = data.id || "";
+  return true;
+}
+
 function resolveNotificationTargets(primaryContact, fallbackEmail = "") {
   const contact = String(primaryContact || "").trim();
 
@@ -4965,20 +5102,30 @@ async function deliverOutboxItem(outboxItem) {
 
   try {
     if (outboxItem.channel === "EMAIL") {
-      const transport = await getSmtpTransport();
+      if (hasResendConfig() && emailProvider === "resend") {
+        const sentByResend = await sendEmailWithResend(outboxItem);
 
-      if (!transport) {
-        outboxItem.status = "PENDING_CONFIG";
-        outboxItem.lastError = "Configure SMTP_HOST, SMTP_USER, SMTP_PASS e NOTIFICATION_FROM_EMAIL.";
-        return outboxItem;
+        if (!sentByResend) {
+          return outboxItem;
+        }
+      } else {
+        const transport = await getSmtpTransport();
+
+        if (!transport) {
+          outboxItem.status = "PENDING_CONFIG";
+          outboxItem.lastError = hasResendConfig()
+            ? "EMAIL_PROVIDER esta como SMTP. Configure SMTP ou defina EMAIL_PROVIDER=resend."
+            : "Configure SMTP_HOST, SMTP_USER, SMTP_PASS e NOTIFICATION_FROM_EMAIL, ou use RESEND_API_KEY.";
+          return outboxItem;
+        }
+
+        await transport.sendMail({
+          from: notificationFromEmail,
+          to: outboxItem.to,
+          subject: outboxItem.subject,
+          text: outboxItem.message,
+        });
       }
-
-      await transport.sendMail({
-        from: notificationFromEmail,
-        to: outboxItem.to,
-        subject: outboxItem.subject,
-        text: outboxItem.message,
-      });
     } else {
       outboxItem.status = "FAILED";
       outboxItem.lastError = "Canal de notificacao nao suportado. Use EMAIL.";

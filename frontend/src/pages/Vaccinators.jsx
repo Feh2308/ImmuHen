@@ -12,6 +12,7 @@ import {
   createVaccinatorApi,
   deleteVaccinatorApi,
   fetchVaccinatorsApi,
+  sendVaccinatorNotificationTestApi,
   updateVaccinatorApi,
 } from "../services/vacitechApi";
 
@@ -52,6 +53,8 @@ function Vaccinators() {
   const [vaccinators, setVaccinators] = useState(getStoredVaccinators);
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [copiedLink, setCopiedLink] = useState(false);
+  const [notificationTestMessages, setNotificationTestMessages] = useState({});
+  const [notificationTestLoadingId, setNotificationTestLoadingId] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -287,6 +290,36 @@ function Vaccinators() {
       await deleteVaccinatorApi(id);
     } catch (error) {
       console.log(error);
+    }
+  }
+
+  async function testVaccinatorNotification(vaccinator) {
+    setNotificationTestLoadingId(String(vaccinator.id));
+    setNotificationTestMessages((currentMessages) => ({
+      ...currentMessages,
+      [vaccinator.id]: "",
+    }));
+
+    try {
+      const data = await sendVaccinatorNotificationTestApi(vaccinator.id);
+      const email = (data.delivered || []).find((item) => item.channel === "EMAIL");
+      const message = !email
+        ? "Nenhum email de notificacao encontrado. Confira o email do vacinador."
+        : email.status === "SENT"
+          ? `Teste enviado para ${email.to}.`
+          : `EMAIL: ${email.status}. ${email.lastError || ""}`.trim();
+
+      setNotificationTestMessages((currentMessages) => ({
+        ...currentMessages,
+        [vaccinator.id]: message,
+      }));
+    } catch (error) {
+      setNotificationTestMessages((currentMessages) => ({
+        ...currentMessages,
+        [vaccinator.id]: error.message,
+      }));
+    } finally {
+      setNotificationTestLoadingId("");
     }
   }
 
@@ -531,12 +564,29 @@ function Vaccinators() {
 
                 <button
                   type="button"
+                  onClick={() => testVaccinatorNotification(vaccinator)}
+                  disabled={notificationTestLoadingId === String(vaccinator.id)}
+                  className="rounded-xl bg-green-600 px-4 py-2 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {notificationTestLoadingId === String(vaccinator.id)
+                    ? "Testando..."
+                    : "Testar email"}
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => deleteVaccinator(vaccinator.id)}
                   className="rounded-xl bg-red-700 px-4 py-2 font-semibold text-white transition hover:bg-red-800"
                 >
                   Excluir
                 </button>
               </div>
+
+              {notificationTestMessages[vaccinator.id] && (
+                <p className="mt-3 rounded-xl border border-green-100 bg-white p-3 text-sm font-semibold text-zinc-700">
+                  {notificationTestMessages[vaccinator.id]}
+                </p>
+              )}
 
               {editingId === vaccinator.id && (
                 <div className="mt-5 grid gap-3 rounded-xl border border-green-100 bg-green-50 p-4">
