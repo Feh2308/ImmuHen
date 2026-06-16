@@ -87,6 +87,13 @@ export function updateRequestStatus(requestId, status, payload = {}) {
   });
 }
 
+export function sendRequestMessage(requestId, payload = {}) {
+  return apiRequest(`/api/vacitech/requests/${requestId}/messages`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function postponeVaccination(requestId, postponement) {
   return apiRequest(`/api/vacitech/requests/${requestId}/postpone`, {
     method: "POST",
@@ -101,9 +108,9 @@ export function uploadTemperaturePhoto(requestId, payload) {
   });
 }
 
-export function requestExtraDoses(requestId, message) {
+export function requestExtraDoses(requestId, message, payload = {}) {
   return apiRequest(`/api/vacitech/requests/${requestId}/dose-request`, {
     method: "POST",
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, ...payload }),
   });
 }

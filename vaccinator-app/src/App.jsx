@@ -5,6 +5,7 @@ import {
   loginVaccinator,
   postponeVaccination,
   requestExtraDoses,
+  sendRequestMessage,
   updateVaccinatorNotificationContact,
   updateRequestStatus,
   uploadTemperaturePhoto,
@@ -39,6 +40,18 @@ function normalizeStatus(status) {
     return "RECUSADA";
   }
 
+  if (status === "ACEITA") {
+    return "CONFIRMADA";
+  }
+
+  if (status === "EM_EXECUCAO") {
+    return "EM_ANDAMENTO";
+  }
+
+  if (status === "ENVIADA_PARA_CONFERENCIA") {
+    return "AGUARDANDO_CONFIRMACAO_ADMIN";
+  }
+
   return status || "PENDENTE";
 }
 
@@ -61,7 +74,25 @@ function statusClass(status) {
     return "status status-done";
   }
 
+  if (normalizedStatus === "AGUARDANDO_CONFIRMACAO_ADMIN") {
+    return "status status-review";
+  }
+
+  if (normalizedStatus === "AJUSTE_SOLICITADO") {
+    return "status status-adjustment";
+  }
+
+  if (normalizedStatus === "CONCLUIDA_CONFIRMADA") {
+    return "status status-done";
+  }
+
   return "status status-pending";
+}
+
+function isAwaitingAdminConfirmation(status) {
+  const normalizedStatus = normalizeStatus(status);
+
+  return normalizedStatus === "AGUARDANDO_CONFIRMACAO_ADMIN" || normalizedStatus === "CONCLUIDA";
 }
 
 function isStandaloneApp() {
@@ -259,7 +290,7 @@ function getRecordMaterials(record) {
       ? record.actualVaccineUsages.map((item) => ({
           ...item,
           doses: parseQuantity(item.quantityUsed || item.doses),
-          source: "Uso real confirmado",
+          source: "Uso real confirmado pela granja",
         }))
     : [
         ...(Array.isArray(record.vaccineUsages) ? record.vaccineUsages : []),
@@ -378,6 +409,7 @@ function App() {
     }
   });
   const [credentials, setCredentials] = useState({
+    credential: "",
     email: "",
     phone: "",
   });
@@ -389,6 +421,8 @@ function App() {
   const [temperatureForms, setTemperatureForms] = useState({});
   const [cameraRequestId, setCameraRequestId] = useState(null);
   const [doseMessages, setDoseMessages] = useState({});
+  const [chatMessages, setChatMessages] = useState({});
+  const [completionNotes, setCompletionNotes] = useState({});
   const [usageForms, setUsageForms] = useState({});
   const [postponeForms, setPostponeForms] = useState({});
   const [farmFilter, setFarmFilter] = useState("TODAS");
@@ -413,10 +447,37 @@ function App() {
 
   const activeRequests = useMemo(() => {
     return (portalData?.requests || [])
+      .filter((request) => {
+        const status = normalizeStatus(request.status);
+
+        return ![
+          "AGUARDANDO_CONFIRMACAO_ADMIN",
+          "CONCLUIDA",
+          "CONCLUIDA_CONFIRMADA",
+          "RECUSADA",
+          "CANCELADA",
+        ].includes(status);
+      })
       .filter((request) => (
-        normalizeStatus(request.status) !== "CONCLUIDA" &&
-        normalizeStatus(request.status) !== "RECUSADA"
+        farmFilter === "TODAS" ||
+        String(request.farmName || "").trim() === farmFilter
       ))
+      .sort(sortVaccinationRecords);
+  }, [portalData, farmFilter]);
+
+  const reviewRequests = useMemo(() => {
+    return (portalData?.requests || [])
+      .filter((request) => isAwaitingAdminConfirmation(request.status))
+      .filter((request) => (
+        farmFilter === "TODAS" ||
+        String(request.farmName || "").trim() === farmFilter
+      ))
+      .sort(sortVaccinationRecords);
+  }, [portalData, farmFilter]);
+
+  const refusedRequests = useMemo(() => {
+    return (portalData?.requests || [])
+      .filter((request) => normalizeStatus(request.status) === "RECUSADA")
       .filter((request) => (
         farmFilter === "TODAS" ||
         String(request.farmName || "").trim() === farmFilter
@@ -429,6 +490,27 @@ function App() {
       normalizeStatus(request.status) === "PENDENTE"
     ));
   }, [activeRequests]);
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayRequests = useMemo(() => (
+    activeRequests.filter((request) => (
+      (request.vaccinationStartDate || request.date) === todayKey
+    ))
+  ), [activeRequests, todayKey]);
+  const overdueRequests = useMemo(() => (
+    activeRequests.filter((request) => {
+      const date = request.vaccinationEndDate || request.date || request.vaccinationStartDate;
+
+      return date && date < todayKey;
+    })
+  ), [activeRequests, todayKey]);
+  const nextRequest = useMemo(() => (
+    activeRequests.find((request) => {
+      const date = request.vaccinationStartDate || request.date;
+
+      return date && date >= todayKey;
+    })
+  ), [activeRequests, todayKey]);
 
   const agendaDays = useMemo(() => {
     const grouped = new Map();
@@ -620,17 +702,48 @@ function App() {
     setSession(null);
     setPortalData(null);
     setCredentials({
+      credential: "",
       email: "",
       phone: "",
     });
   }
 
   async function answerRequest(request, status) {
+    let payload = {
+      vaccinatorId: session?.vaccinatorId || "",
+      vaccinatorEmail: vaccinator?.email || "",
+      vaccinatorPhone: vaccinator?.phone || "",
+    };
+
+    if (status === "RECUSADA") {
+      const reason = window.prompt("Informe o motivo da recusa:");
+
+      if (reason === null) {
+        return;
+      }
+
+      if (!reason.trim()) {
+        setMessage("Informe o motivo para recusar a vacinacao.");
+        return;
+      }
+
+      const confirmed = window.confirm("Confirmar recusa desta vacinacao?");
+
+      if (!confirmed) {
+        return;
+      }
+
+      payload = {
+        ...payload,
+        refusalReason: reason.trim(),
+      };
+    }
+
     setLoading(true);
     setMessage("");
 
     try {
-      await updateRequestStatus(request.id, status);
+      await updateRequestStatus(request.id, status, payload);
       await loadPortal();
     } catch (error) {
       setMessage(error.message);
@@ -680,6 +793,20 @@ function App() {
         ...(temperatureForms[requestId] || {}),
         temperatureNotes: value,
       },
+    });
+  }
+
+  function updateCompletionNotes(requestId, value) {
+    setCompletionNotes({
+      ...completionNotes,
+      [requestId]: value,
+    });
+  }
+
+  function updateChatMessage(requestId, value) {
+    setChatMessages({
+      ...chatMessages,
+      [requestId]: value,
     });
   }
 
@@ -818,6 +945,14 @@ function App() {
       return;
     }
 
+    const confirmed = window.confirm(
+      "Enviar esta vacinacao para conferencia da granja?\n\nO estoque so sera baixado depois que o administrador confirmar no sistema principal."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     setLoading(true);
     setMessage("");
 
@@ -826,7 +961,11 @@ function App() {
         await uploadTemperaturePhoto(request.id, form);
       }
 
-      await updateRequestStatus(request.id, "CONCLUIDA", {
+      await updateRequestStatus(request.id, "AGUARDANDO_CONFIRMACAO_ADMIN", {
+        vaccinatorId: session?.vaccinatorId || "",
+        vaccinatorEmail: vaccinator?.email || "",
+        vaccinatorPhone: vaccinator?.phone || "",
+        completionObservation: completionNotes[request.id] || "",
         usageConfirmation: usageRows.map((row) => ({
           id: row.id,
           vaccineId: row.vaccineId,
@@ -855,8 +994,13 @@ function App() {
         delete nextForms[request.id];
         return nextForms;
       });
+      setCompletionNotes((currentNotes) => {
+        const nextNotes = { ...currentNotes };
+        delete nextNotes[request.id];
+        return nextNotes;
+      });
       await loadPortal();
-      setMessage("Vacinacao concluida e enviada para o sistema.");
+      setMessage("Vacinacao enviada para conferencia da granja. O estoque ainda nao foi baixado.");
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -876,12 +1020,48 @@ function App() {
     setMessage("");
 
     try {
-      await requestExtraDoses(request.id, message.trim());
+      await requestExtraDoses(request.id, message.trim(), {
+        vaccinatorId: session?.vaccinatorId || "",
+        vaccinatorEmail: vaccinator?.email || "",
+        vaccinatorPhone: vaccinator?.phone || "",
+      });
       setDoseMessages({
         ...doseMessages,
         [request.id]: "",
       });
       await loadPortal();
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendVaccinationMessage(request) {
+    const message = String(chatMessages[request.id] || "").trim();
+
+    if (!message) {
+      setMessage("Escreva uma mensagem para enviar para a granja.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      await sendRequestMessage(request.id, {
+        message,
+        vaccinatorId: session?.vaccinatorId || "",
+        vaccinatorEmail: vaccinator?.email || "",
+        vaccinatorPhone: vaccinator?.phone || "",
+        senderName: vaccinator?.name || session.name || "Vacinador",
+      });
+      setChatMessages({
+        ...chatMessages,
+        [request.id]: "",
+      });
+      await loadPortal();
+      setMessage("Mensagem enviada para a granja.");
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -905,6 +1085,9 @@ function App() {
         vaccinationStartDate: form.vaccinationStartDate,
         vaccinationEndDate: form.vaccinationEndDate,
         reason: form.reason || "",
+        vaccinatorId: session?.vaccinatorId || "",
+        vaccinatorEmail: vaccinator?.email || "",
+        vaccinatorPhone: vaccinator?.phone || "",
       });
       setPostponeForms({
         ...postponeForms,
@@ -978,6 +1161,16 @@ function App() {
 
           <form onSubmit={handleLogin} className="auth-form">
             <h2>Acessar agenda</h2>
+
+            <label>
+              Email, telefone, CPF ou codigo
+              <input
+                type="text"
+                value={credentials.credential}
+                onChange={(event) => updateCredentials("credential", event.target.value)}
+                placeholder="Digite seu identificador"
+              />
+            </label>
 
             <label>
               Email
@@ -1066,6 +1259,18 @@ function App() {
           <strong>{pendingRequests.length}</strong>
         </article>
         <article>
+          <span>Hoje</span>
+          <strong>{todayRequests.length}</strong>
+        </article>
+        <article>
+          <span>Atrasadas</span>
+          <strong>{overdueRequests.length}</strong>
+        </article>
+        <article>
+          <span>Em conferencia</span>
+          <strong>{reviewRequests.length}</strong>
+        </article>
+        <article>
           <span>Granjas</span>
           <strong>{portalData?.linkedFarms?.length || 0}</strong>
         </article>
@@ -1076,6 +1281,10 @@ function App() {
         <article>
           <span>Feitas no mes</span>
           <strong>{currentMonthReport?.total || 0}</strong>
+        </article>
+        <article>
+          <span>Proxima</span>
+          <strong>{nextRequest ? formatDate(nextRequest.vaccinationStartDate || nextRequest.date) : "-"}</strong>
         </article>
       </section>
 
@@ -1090,7 +1299,16 @@ function App() {
 
             {(portalData?.linkedFarms || []).map((farm) => (
               <article className="farm-card" key={`${farm.farmName}-${farm.document}`}>
-                <h3>{farm.farmName}</h3>
+                <div className="farm-card-head">
+                  <h3>{farm.farmName}</h3>
+                  {farm.primaryColor && (
+                    <span
+                      className="farm-color"
+                      style={{ backgroundColor: farm.primaryColor }}
+                      aria-label={`Cor da granja ${farm.farmName}`}
+                    />
+                  )}
+                </div>
                 <p>Cidade: {farm.city || "-"}</p>
                 <p>CNPJ/CPF: {farm.document || "-"}</p>
                 <p>Proprietario: {farm.owner || "-"}</p>
@@ -1105,6 +1323,13 @@ function App() {
                     "-"
                   )}
                 </p>
+                <button
+                  type="button"
+                  className="ghost-button compact-button"
+                  onClick={() => setFarmFilter(farm.farmName || "TODAS")}
+                >
+                  Ver agenda desta granja
+                </button>
               </article>
             ))}
           </section>
@@ -1213,7 +1438,9 @@ function App() {
 
           {activeRequests.length === 0 && (
             <p className="muted">
-              {farmFilter === "TODAS"
+              {reviewRequests.length > 0
+                ? "Nenhuma vacinacao em execucao. Existem pedidos aguardando conferencia abaixo."
+                : farmFilter === "TODAS"
                 ? "Nenhum programa recebido."
                 : "Nenhum programa recebido para esta granja."}
             </p>
@@ -1366,6 +1593,37 @@ function App() {
                   </div>
                 )}
 
+                <div className="dose-box chat-box">
+                  <strong>Mensagens com a granja</strong>
+                  <div className="chat-list">
+                    {(request.messages || []).length === 0 && (
+                      <p className="muted">Nenhuma mensagem nesta vacinacao.</p>
+                    )}
+                    {(request.messages || []).map((item) => (
+                      <article
+                        className={`chat-message ${item.senderType === "ADMIN" ? "chat-admin" : "chat-vaccinator"}`}
+                        key={item.id}
+                      >
+                        <strong>{item.senderName || (item.senderType === "ADMIN" ? "Granja" : "Vacinador")}</strong>
+                        <p>{item.text}</p>
+                        <span>{item.createdAt}</span>
+                      </article>
+                    ))}
+                  </div>
+                  <textarea
+                    value={chatMessages[request.id] || ""}
+                    onChange={(event) => updateChatMessage(request.id, event.target.value)}
+                    placeholder="Envie uma mensagem para a granja..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => sendVaccinationMessage(request)}
+                    disabled={loading}
+                  >
+                    Enviar mensagem
+                  </button>
+                </div>
+
                 {status === "PENDENTE" && (
                   <div className="request-actions">
                     <button
@@ -1391,6 +1649,20 @@ function App() {
                       disabled={loading}
                     >
                       Iniciar vacinacao
+                    </button>
+                  </div>
+                )}
+
+                {status === "AJUSTE_SOLICITADO" && (
+                  <div className="dose-box adjustment-box">
+                    <strong>Ajuste solicitado pela granja</strong>
+                    <p>{request.adjustmentReason || request.statusReason || "Revise as informacoes e envie novamente para conferencia."}</p>
+                    <button
+                      type="button"
+                      onClick={() => answerRequest(request, "EM_ANDAMENTO")}
+                      disabled={loading}
+                    >
+                      Corrigir informacoes
                     </button>
                   </div>
                 )}
@@ -1558,6 +1830,11 @@ function App() {
                       onChange={(event) => updateTemperatureNotes(request.id, event.target.value)}
                       placeholder="Observacao da temperatura registrada"
                     />
+                    <textarea
+                      value={completionNotes[request.id] || ""}
+                      onChange={(event) => updateCompletionNotes(request.id, event.target.value)}
+                      placeholder="Observacoes finais da aplicacao, sobras ou ocorrencias"
+                    />
                     {temperatureForms[request.id]?.temperaturePhoto && (
                       <img
                         src={temperatureForms[request.id].temperaturePhoto}
@@ -1583,7 +1860,7 @@ function App() {
                         onClick={() => completeRequest(request)}
                         disabled={loading}
                       >
-                        Marcar como concluida
+                        Enviar para conferencia
                       </button>
                     </div>
                   </div>
@@ -1621,6 +1898,51 @@ function App() {
               </article>
             );
           })}
+
+          {reviewRequests.length > 0 && (
+            <div className="review-section">
+              <h3>Enviadas para conferencia</h3>
+              <p className="muted">
+                Aguardando a granja conferir e confirmar oficialmente.
+              </p>
+              <div className="review-list">
+                {reviewRequests.map((request) => (
+                  <article className="review-card" key={`review-${request.id}`}>
+                    <div>
+                      <strong>{request.farmName || "Granja"}</strong>
+                      <p>
+                        {request.programDay ? `Dia ${request.programDay}` : "Vacina"}
+                        {request.birdLotName ? ` | ${request.birdLotName}` : ""}
+                      </p>
+                      <span>{request.awaitingAdminConfirmationAt || request.completedAt || "-"}</span>
+                    </div>
+                    <span className={statusClass(request.status)}>
+                      {normalizeStatus(request.status)}
+                    </span>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {refusedRequests.length > 0 && (
+            <div className="review-section">
+              <h3>Recusadas</h3>
+              <div className="review-list">
+                {refusedRequests.map((request) => (
+                  <article className="review-card" key={`refused-${request.id}`}>
+                    <div>
+                      <strong>{request.farmName || "Granja"}</strong>
+                      <p>{request.rejectedReason || request.refusalReason || request.statusReason || "Sem motivo informado."}</p>
+                    </div>
+                    <span className={statusClass(request.status)}>
+                      {normalizeStatus(request.status)}
+                    </span>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       </section>
     </main>

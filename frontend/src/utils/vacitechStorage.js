@@ -346,11 +346,27 @@ export function normalizeRequestStatus(status) {
     return "RECUSADA";
   }
 
+  if (status === "ACEITA") {
+    return "CONFIRMADA";
+  }
+
+  if (status === "EM_EXECUCAO") {
+    return "EM_ANDAMENTO";
+  }
+
+  if (status === "ENVIADA_PARA_CONFERENCIA") {
+    return "AGUARDANDO_CONFIRMACAO_ADMIN";
+  }
+
   if (
     status === "CONFIRMADA" ||
     status === "RECUSADA" ||
     status === "EM_ANDAMENTO" ||
-    status === "CONCLUIDA"
+    status === "CONCLUIDA" ||
+    status === "AGUARDANDO_CONFIRMACAO_ADMIN" ||
+    status === "AJUSTE_SOLICITADO" ||
+    status === "CONCLUIDA_CONFIRMADA" ||
+    status === "CANCELADA"
   ) {
     return status;
   }
@@ -375,6 +391,22 @@ export function getStatusClass(status) {
 
   if (normalizedStatus === "CONCLUIDA") {
     return "bg-zinc-900 text-white border-zinc-900";
+  }
+
+  if (normalizedStatus === "AGUARDANDO_CONFIRMACAO_ADMIN") {
+    return "bg-purple-100 text-purple-700 border-purple-200";
+  }
+
+  if (normalizedStatus === "AJUSTE_SOLICITADO") {
+    return "bg-orange-100 text-orange-700 border-orange-200";
+  }
+
+  if (normalizedStatus === "CONCLUIDA_CONFIRMADA") {
+    return "bg-emerald-100 text-emerald-700 border-emerald-200";
+  }
+
+  if (normalizedStatus === "CANCELADA") {
+    return "bg-zinc-100 text-zinc-600 border-zinc-200";
   }
 
   return "bg-yellow-100 text-yellow-700 border-yellow-200";

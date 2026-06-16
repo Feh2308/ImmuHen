@@ -12,6 +12,8 @@ import {
   confirmDoseRequestApi,
   fetchRequestsApi,
   fetchSharedStateApi,
+  reviewVaccinationCompletionApi,
+  sendRequestMessageApi,
 } from "../services/vacitechApi";
 import { useVaccines } from "../context/VaccineContext";
 import { sortVaccinesByCode } from "../utils/vaccineSort";
@@ -157,7 +159,7 @@ function getRecordMaterials(record) {
       ? record.actualVaccineUsages.map((item) => ({
           ...item,
           doses: parseQuantity(item.quantityUsed || item.doses),
-          source: "Uso real confirmado",
+          source: "Uso real informado",
         }))
     : [
         ...(Array.isArray(record.vaccineUsages) ? record.vaccineUsages : []),
@@ -197,6 +199,12 @@ function shouldShowRequest(request) {
   return status !== "RECUSADA" && !request.systemConfirmedAtIso && !request.archivedAtIso;
 }
 
+function isAwaitingAdminConfirmation(status) {
+  const normalizedStatus = normalizeRequestStatus(status);
+
+  return normalizedStatus === "AGUARDANDO_CONFIRMACAO_ADMIN" || normalizedStatus === "CONCLUIDA";
+}
+
 function Requests() {
   const {
     vaccines,
@@ -209,6 +217,7 @@ function Requests() {
   const [statusFilter, setStatusFilter] = useState("TODAS");
   const [doseConfirmationForms, setDoseConfirmationForms] = useState({});
   const [completionForms, setCompletionForms] = useState({});
+  const [messageDrafts, setMessageDrafts] = useState({});
   const captureUrl = `${window.location.origin}/temperatura-vacina`;
   const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
 
@@ -269,6 +278,8 @@ function Requests() {
         CONFIRMADA: 0,
         EM_ANDAMENTO: 0,
         CONCLUIDA: 0,
+        AGUARDANDO_CONFIRMACAO_ADMIN: 0,
+        AJUSTE_SOLICITADO: 0,
         RECUSADA: 0,
       }
     );
@@ -279,6 +290,10 @@ function Requests() {
       return true;
     }
 
+    if (statusFilter === "AGUARDANDO_CONFIRMACAO_ADMIN") {
+      return isAwaitingAdminConfirmation(request.status);
+    }
+
     return normalizeRequestStatus(request.status) === statusFilter;
   });
 
@@ -287,6 +302,10 @@ function Requests() {
       notification.type === "DOSE_REQUEST" ||
       notification.type === "TEMPERATURE_PHOTO" ||
       notification.type === "VACCINATION_COMPLETED" ||
+      notification.type === "VACCINATION_AWAITING_ADMIN" ||
+      notification.type === "VACCINATION_ADJUSTMENT_REQUESTED" ||
+      notification.type === "VACCINATION_REJECTED" ||
+      notification.type === "VACCINATION_MESSAGE" ||
       notification.type === "VACCINATION_POSTPONED" ||
       notification.type === "VACCINE_CHANGED" ||
       notification.type === "OVERDUE_VACCINATION" ||
@@ -308,6 +327,22 @@ function Requests() {
 
     if (type === "VACCINATION_COMPLETED") {
       return "Vacinacao concluida";
+    }
+
+    if (type === "VACCINATION_AWAITING_ADMIN") {
+      return "Aguardando confirmacao";
+    }
+
+    if (type === "VACCINATION_ADJUSTMENT_REQUESTED") {
+      return "Ajuste solicitado";
+    }
+
+    if (type === "VACCINATION_REJECTED") {
+      return "Vacinacao rejeitada";
+    }
+
+    if (type === "VACCINATION_MESSAGE") {
+      return "Mensagem";
     }
 
     if (type === "OVERDUE_VACCINATION") {
@@ -529,7 +564,7 @@ function Requests() {
     const completionForm = getCompletionForm(request);
     const returnedVaccines = getReturnedVaccines(request);
     const confirmed = window.confirm(
-      "Confirmar que esta vacinacao foi concluida?\n\nO sistema vai gerar o comprovante em PDF e remover esta solicitacao da lista."
+      "Confirmar esta vacinacao e baixar o estoque agora?\n\nO sistema vai descontar somente a quantidade usada informada pelo vacinador, gerar o comprovante em PDF e remover esta solicitacao da lista."
     );
 
     if (!confirmed) {
@@ -556,6 +591,80 @@ function Requests() {
         return nextForms;
       });
       await loadRequests();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function reviewCompletion(request, action) {
+    const isAdjustment = action === "ADJUSTMENT";
+    const reason = window.prompt(
+      isAdjustment
+        ? "Qual ajuste o vacinador precisa fazer?"
+        : "Informe o motivo da rejeicao/devolucao sem baixa:"
+    );
+
+    if (reason === null) {
+      return;
+    }
+
+    if (!reason.trim()) {
+      alert("Informe um motivo para registrar a revisao.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      isAdjustment
+        ? "Enviar solicitacao de ajuste para o vacinador? O estoque nao sera alterado."
+        : "Rejeitar esta conclusao? O estoque nao sera alterado."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const data = await reviewVaccinationCompletionApi(request.id, {
+        action,
+        reason: reason.trim(),
+      });
+
+      setRequests(data.requests || requests);
+      setNotifications(data.notifications || notifications);
+      writeJson("requests", data.requests || requests, { silent: true });
+      writeJson("vaccinatorNotifications", data.notifications || notifications, { silent: true });
+      await loadRequests();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  function updateMessageDraft(requestId, value) {
+    setMessageDrafts({
+      ...messageDrafts,
+      [requestId]: value,
+    });
+  }
+
+  async function sendRequestMessage(request) {
+    const message = String(messageDrafts[request.id] || "").trim();
+
+    if (!message) {
+      alert("Escreva uma mensagem para enviar ao vacinador.");
+      return;
+    }
+
+    try {
+      const data = await sendRequestMessageApi(request.id, message);
+
+      setRequests(data.requests || requests);
+      setNotifications(data.notifications || notifications);
+      setMessageDrafts((currentDrafts) => ({
+        ...currentDrafts,
+        [request.id]: "",
+      }));
+      writeJson("requests", data.requests || requests, { silent: true });
+      writeJson("vaccinatorNotifications", data.notifications || notifications, { silent: true });
     } catch (error) {
       alert(error.message);
     }
@@ -596,7 +705,7 @@ function Requests() {
           </div>
         </section>
 
-        <section className="mt-6 grid gap-4 md:grid-cols-3">
+        <section className="mt-6 grid gap-4 md:grid-cols-4">
           <div className="rounded-2xl border border-yellow-100 bg-white p-5 shadow-sm">
             <p className="text-sm font-bold uppercase tracking-wide text-yellow-700">
               Pendentes
@@ -623,11 +732,20 @@ function Requests() {
               {counters.EM_ANDAMENTO}
             </p>
           </div>
+
+          <div className="rounded-2xl border border-purple-100 bg-white p-5 shadow-sm">
+            <p className="text-sm font-bold uppercase tracking-wide text-purple-700">
+              Aguardando conferencia
+            </p>
+            <p className="mt-3 text-4xl font-bold text-purple-600">
+              {(counters.AGUARDANDO_CONFIRMACAO_ADMIN || 0) + (counters.CONCLUIDA || 0)}
+            </p>
+          </div>
         </section>
 
         <section className="mt-6 rounded-2xl border border-green-100 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap gap-3">
-            {["TODAS", "PENDENTE", "CONFIRMADA", "EM_ANDAMENTO", "CONCLUIDA"].map((status) => (
+            {["TODAS", "PENDENTE", "CONFIRMADA", "EM_ANDAMENTO", "AGUARDANDO_CONFIRMACAO_ADMIN", "AJUSTE_SOLICITADO", "CONCLUIDA"].map((status) => (
               <button
                 key={status}
                 type="button"
@@ -716,7 +834,7 @@ function Requests() {
                     {status}
                   </span>
                   <div className="flex flex-wrap gap-2">
-                    {status !== "CONCLUIDA" && (
+                    {!isAwaitingAdminConfirmation(status) && (
                       <>
                         <a
                           href={getCaptureUrl(request.id)}
@@ -736,8 +854,8 @@ function Requests() {
                       </>
                     )}
 
-                    {status === "CONCLUIDA" && (
-                      <div className="grid gap-3 rounded-xl border border-green-100 bg-green-50 p-3">
+                    {isAwaitingAdminConfirmation(status) && (
+                      <div className="grid gap-3 rounded-xl border border-purple-100 bg-purple-50 p-3">
                         <label className="grid gap-2 text-sm font-semibold text-zinc-700">
                           Execucao
                           <select
@@ -752,7 +870,7 @@ function Requests() {
                         </label>
 
                         <p className="rounded-xl border border-green-100 bg-white p-3 text-sm font-semibold text-zinc-600">
-                          Uso real, doses levadas e sobras sao registrados pelo app do vacinador.
+                          O vacinador enviou os dados para conferencia. O estoque so baixa quando voce confirmar aqui.
                         </p>
 
                         <button
@@ -760,7 +878,23 @@ function Requests() {
                           onClick={() => confirmCompletion(request)}
                           className="rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700"
                         >
-                          Confirmar que vacinacao foi concluida
+                          Confirmar e baixar estoque
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => reviewCompletion(request, "ADJUSTMENT")}
+                          className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-orange-700 ring-1 ring-orange-200 transition hover:bg-orange-50"
+                        >
+                          Solicitar ajuste
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => reviewCompletion(request, "REJECT")}
+                          className="rounded-xl bg-red-50 px-4 py-2 text-sm font-bold text-red-600 transition hover:bg-red-100"
+                        >
+                          Rejeitar sem baixar estoque
                         </button>
                       </div>
                     )}
@@ -812,7 +946,7 @@ function Requests() {
                 {Array.isArray(request.actualVaccineUsages) && request.actualVaccineUsages.length > 0 && (
                   <div className="mt-5 rounded-xl border border-green-100 bg-green-50 p-4">
                     <p className="text-sm font-bold uppercase tracking-wide text-green-700">
-                      Uso real confirmado pelo vacinador
+                      Uso real informado pelo vacinador
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {request.actualVaccineUsages.map((usage, index) => (
@@ -1039,6 +1173,67 @@ function Requests() {
                     )}
                   </div>
                 )}
+
+                <div className="mt-5 rounded-xl border border-green-100 bg-green-50 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                        Chat da vacinacao
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        Mensagens ficam registradas neste pedido.
+                      </p>
+                    </div>
+                    <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-green-700">
+                      {(request.messages || []).length} mensagem(ns)
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    {(request.messages || []).length === 0 && (
+                      <p className="rounded-xl bg-white p-3 text-sm text-zinc-500">
+                        Nenhuma mensagem nesta vacinacao.
+                      </p>
+                    )}
+
+                    {(request.messages || []).map((message) => (
+                      <div
+                        key={message.id}
+                        className="rounded-xl bg-white p-3"
+                      >
+                        <p className="text-sm font-bold text-zinc-900">
+                          {message.senderName || (message.senderType === "ADMIN" ? "Administrador" : "Vacinador")}
+                          <span className="ml-2 font-semibold text-zinc-400">
+                            {message.createdAt}
+                          </span>
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-zinc-700">
+                          {message.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                      Mensagem para o vacinador
+                      <textarea
+                        value={messageDrafts[request.id] || ""}
+                        onChange={(event) => updateMessageDraft(request.id, event.target.value)}
+                        placeholder="Escreva uma orientacao ou pedido de ajuste..."
+                        rows={3}
+                        className="resize-y rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => sendRequestMessage(request)}
+                      className="rounded-xl bg-green-600 px-5 py-3 font-bold text-white transition hover:bg-green-700"
+                    >
+                      Enviar mensagem
+                    </button>
+                  </div>
+                </div>
               </article>
             );
           })}

@@ -388,6 +388,8 @@ function Schedule() {
   const [birdLots, setBirdLots] = useState([]);
   const [notifications, setNotifications] = useState(() => readJson("vaccinatorNotifications", []));
   const [showForm, setShowForm] = useState(false);
+  const [scheduleMessage, setScheduleMessage] = useState("");
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [vaccineUsages, setVaccineUsages] = useState([
     { id: "uso-1", vaccineId: "", doses: "", flaskCc: "", dosePerBirdCc: "", birdsVaccinated: "", laborCost: "", applicationMethod: "Ocular" },
   ]);
@@ -1003,6 +1005,11 @@ function getMapsLink(location) {
   }
 
   async function addSchedule() {
+    if (isSavingSchedule) {
+      return;
+    }
+
+    setScheduleMessage("");
     const isMonthlySchedule = form.scheduleMode === "MES_INTEIRO";
     const isProgramSchedule = form.scheduleMode === "PROGRAMA_120_DIAS";
 
@@ -1131,6 +1138,10 @@ function getMapsLink(location) {
       return;
     }
 
+    setIsSavingSchedule(true);
+    setScheduleMessage("Salvando programa de vacinacao...");
+
+    try {
     const baseScheduleId = Date.now();
     const farmProfile = getFarmProfile();
     const savedSchedules = [];
@@ -1252,7 +1263,15 @@ function getMapsLink(location) {
 
     resetForm();
     setShowForm(false);
+    setScheduleMessage(`${savedSchedules.length} programa(s) criado(s) com sucesso.`);
     alert(`${savedSchedules.length} programa(s) criado(s).`);
+    } catch (error) {
+      console.log(error);
+      setScheduleMessage(error.message || "Nao foi possivel finalizar o programa. Tente novamente.");
+      alert(error.message || "Nao foi possivel finalizar o programa. Tente novamente.");
+    } finally {
+      setIsSavingSchedule(false);
+    }
   }
 
   function getScheduleVaccinatorName(schedule) {
@@ -1946,6 +1965,12 @@ function getMapsLink(location) {
           Novo Programa
         </button>
 
+        {scheduleMessage && (
+          <p className="mt-4 rounded-2xl border border-green-100 bg-white px-5 py-4 font-semibold text-green-700 shadow-sm">
+            {scheduleMessage}
+          </p>
+        )}
+
         {showForm && (
           <section className="mt-6 rounded-2xl border border-green-100 bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-bold text-zinc-900">
@@ -2597,9 +2622,10 @@ function getMapsLink(location) {
               <button
                 type="button"
                 onClick={addSchedule}
+                disabled={isSavingSchedule}
                 className="rounded-xl bg-green-600 px-6 py-3 font-bold text-white transition hover:bg-green-700"
               >
-                Salvar Programa
+                {isSavingSchedule ? "Salvando..." : "Salvar Programa"}
               </button>
 
               <button

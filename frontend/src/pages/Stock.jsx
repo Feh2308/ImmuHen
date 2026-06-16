@@ -1,12 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Sidebar from "../components/Sidebar";
 
 import {
   useVaccines,
 } from "../context/VaccineContext";
-import { authorizeStockAccessApi } from "../services/vacitechApi";
-import { getTenantSessionKey } from "../utils/vacitechStorage";
+import {
+  authorizeStockAccessApi,
+  fetchSharedStateApi,
+  reviewVaccinationCompletionApi,
+} from "../services/vacitechApi";
+import {
+  getTenantSessionKey,
+  readJson,
+  writeJson,
+} from "../utils/vacitechStorage";
 import { compareVaccinesByCode, sortVaccinesByCode } from "../utils/vaccineSort";
 
 function formatCurrency(value) {
@@ -38,6 +46,44 @@ function getAverageDoseCost(entries, vaccineId) {
 
 function isActiveOutput(output) {
   return !output?.clearedAt;
+}
+
+function normalizeRequestStatus(status) {
+  if (status === "ENVIADA_PARA_CONFERENCIA") {
+    return "AGUARDANDO_CONFIRMACAO_ADMIN";
+  }
+
+  return status || "PENDENTE";
+}
+
+function isPendingStockReview(request) {
+  const status = normalizeRequestStatus(request.status);
+
+  return status === "AGUARDANDO_CONFIRMACAO_ADMIN" || status === "CONCLUIDA";
+}
+
+function getPendingUsageItems(request) {
+  const items = Array.isArray(request.actualVaccineUsages) && request.actualVaccineUsages.length > 0
+    ? request.actualVaccineUsages
+    : Array.isArray(request.usageConfirmation)
+      ? request.usageConfirmation
+      : [];
+
+  return items
+    .map((item, index) => ({
+      id: `${request.id}-${item.vaccineId || index}`,
+      requestId: request.id,
+      vaccineId: item.vaccineId || "",
+      vacina: item.vacina || "Vacina",
+      farmName: request.farmName || "Granja",
+      birdLotName: request.birdLotName || "-",
+      vaccinatorName: request.vaccinatorName || "Vacinador",
+      quantityTaken: Number(item.quantityTaken || item.doses || 0),
+      quantityUsed: Number(item.quantityUsed || item.doses || 0),
+      quantityReturned: Number(item.quantityReturned || 0),
+      date: request.awaitingAdminConfirmationAt || request.completedAt || "-",
+    }))
+    .filter((item) => item.vaccineId && (item.quantityTaken > 0 || item.quantityUsed > 0));
 }
 
 function getStatus(saldo) {
@@ -81,7 +127,35 @@ function Stock() {
 
   const [authorized, setAuthorized] =
     useState(() => sessionStorage.getItem(stockSessionKey) === "true");
+  const [requests, setRequests] =
+    useState(() => readJson("requests", []));
   const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadRequests() {
+      try {
+        const state = await fetchSharedStateApi();
+
+        if (!active) {
+          return;
+        }
+
+        setRequests(state.requests || []);
+        writeJson("requests", state.requests || [], { silent: true });
+      } catch (error) {
+        console.log(error);
+        setRequests(readJson("requests", []));
+      }
+    }
+
+    loadRequests();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const stockRows = useMemo(() => {
     const rows = new Map();
@@ -191,6 +265,28 @@ function Stock() {
     });
   }, [entries, outputs]);
 
+  const pendingStockRows = useMemo(() => (
+    requests
+      .filter(isPendingStockReview)
+      .flatMap(getPendingUsageItems)
+      .sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")))
+  ), [requests]);
+
+  const pendingStockTotals = useMemo(() => (
+    pendingStockRows.reduce(
+      (total, row) => ({
+        levadas: total.levadas + row.quantityTaken,
+        usadas: total.usadas + row.quantityUsed,
+        sobrando: total.sobrando + row.quantityReturned,
+      }),
+      {
+        levadas: 0,
+        usadas: 0,
+        sobrando: 0,
+      }
+    )
+  ), [pendingStockRows]);
+
   const lotCostRows = useMemo(() => {
     const rows = new Map();
 
@@ -263,6 +359,37 @@ function Stock() {
     sessionStorage.removeItem(stockSessionKey);
     setAuthorized(false);
     setPassword("");
+  }
+
+  async function returnPendingVaccination(requestId) {
+    const reason = window.prompt("Informe o motivo da devolucao sem baixa no estoque:");
+
+    if (reason === null) {
+      return;
+    }
+
+    if (!reason.trim()) {
+      alert("Informe um motivo para registrar a devolucao.");
+      return;
+    }
+
+    const confirmed = window.confirm("Registrar devolucao/rejeicao sem baixar estoque? Esta acao remove a pendencia da conferencia.");
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const data = await reviewVaccinationCompletionApi(requestId, {
+        action: "REJECT",
+        reason: reason.trim(),
+      });
+
+      setRequests(data.requests || []);
+      writeJson("requests", data.requests || [], { silent: true });
+    } catch (error) {
+      alert(error.message || "Nao foi possivel registrar a devolucao.");
+    }
   }
 
   function printLotCostReport() {
@@ -441,6 +568,76 @@ function Stock() {
             </h2>
           </div>
 
+        </div>
+
+        <div className="mt-8 bg-white rounded-3xl border border-purple-100 p-8 shadow-sm overflow-x-auto">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-zinc-900">
+                Doses levadas aguardando conferencia
+              </h2>
+              <p className="mt-2 text-zinc-500">
+                Estas doses foram informadas pelo vacinador, mas ainda nao foram baixadas definitivamente do estoque.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-purple-50 px-4 py-2 text-sm font-bold text-purple-700">
+                Levadas: {pendingStockTotals.levadas}
+              </span>
+              <span className="rounded-full bg-green-50 px-4 py-2 text-sm font-bold text-green-700">
+                Usadas informadas: {pendingStockTotals.usadas}
+              </span>
+              <span className="rounded-full bg-zinc-50 px-4 py-2 text-sm font-bold text-zinc-700">
+                Sobras: {pendingStockTotals.sobrando}
+              </span>
+            </div>
+          </div>
+
+          <table className="mt-6 w-full text-left text-zinc-900">
+            <thead>
+              <tr className="border-b border-purple-100 text-zinc-500">
+                <th className="pb-4">Vacina</th>
+                <th className="pb-4">Granja/Lote</th>
+                <th className="pb-4">Vacinador</th>
+                <th className="pb-4">Levou</th>
+                <th className="pb-4">Usou</th>
+                <th className="pb-4">Sobrou</th>
+                <th className="pb-4">Acao</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendingStockRows.map((row) => (
+                <tr key={row.id} className="border-b border-purple-100 last:border-b-0">
+                  <td className="py-4 font-bold">{row.vacina}</td>
+                  <td className="min-w-56 max-w-md whitespace-normal break-words">
+                    {row.farmName} {row.birdLotName !== "-" ? `| ${row.birdLotName}` : ""}
+                  </td>
+                  <td>{row.vaccinatorName}</td>
+                  <td className="font-bold text-purple-700">{row.quantityTaken}</td>
+                  <td className="font-bold text-green-700">{row.quantityUsed}</td>
+                  <td className="font-bold text-zinc-700">{row.quantityReturned}</td>
+                  <td>
+                    <button
+                      type="button"
+                      onClick={() => returnPendingVaccination(row.requestId)}
+                      className="rounded-xl bg-red-50 px-4 py-2 font-bold text-red-600 transition hover:bg-red-100"
+                    >
+                      Devolver sem baixa
+                    </button>
+                  </td>
+                </tr>
+              ))}
+
+              {pendingStockRows.length === 0 && (
+                <tr>
+                  <td colSpan="7" className="py-6 text-zinc-500">
+                    Nenhuma dose aguardando conferencia do administrador.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
         <div className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm overflow-x-auto">

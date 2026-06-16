@@ -206,6 +206,20 @@ export async function confirmVaccinationCompletionApi(id, payload = {}) {
   });
 }
 
+export async function reviewVaccinationCompletionApi(id, payload = {}) {
+  return apiRequest(`/api/vacitech/requests/${id}/review`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function sendRequestMessageApi(id, message) {
+  return apiRequest(`/api/vacitech/requests/${id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+}
+
 export async function uploadTemperaturePhotoApi(id, payload) {
   return apiRequest(`/api/vacitech/requests/${id}/temperature-photo`, {
     method: "PATCH",

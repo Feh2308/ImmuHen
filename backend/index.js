@@ -1643,11 +1643,20 @@ app.patch("/api/vacitech/requests/:id/status", async (req, res) => {
       message: "Esta granja esta excluida temporariamente.",
     });
   }
-  const status = normalizeRequestStatus(req.body.status);
+  const requestedStatus = normalizeRequestStatus(req.body.status);
+  const hasUsageConfirmation = Boolean(
+    req.body.usageConfirmation ||
+    req.body.vaccineUsageConfirmation ||
+    req.body.actualVaccineUsages
+  );
+  const status = requestedStatus === "CONCLUIDA" && hasUsageConfirmation
+    ? "AGUARDANDO_CONFIRMACAO_ADMIN"
+    : requestedStatus;
   const now = new Date();
   const answeredAt = now.toLocaleString("pt-BR");
   const statusTimestamps = getStatusTimestamps(status, answeredAt, now.toISOString());
   let updatedRequest = null;
+  let notificationForFarm = null;
 
   tenantData.requests = tenantData.requests.map((request) => {
     if (String(request.id) !== String(req.params.id)) {
@@ -1669,73 +1678,92 @@ app.patch("/api/vacitech/requests/:id/status", async (req, res) => {
     });
   }
 
-  tenantData.schedules = tenantData.schedules.map((schedule) => (
-    String(schedule.id) === String(updatedRequest.scheduleId)
-      ? {
-          ...schedule,
-          status,
-          ...statusTimestamps,
-        }
-      : schedule
-  ));
+  const accessError = validateVaccinatorRequestAccess(req, updatedRequest);
 
-  if (status === "CONCLUIDA") {
+  if (accessError) {
+    return res.status(403).json({
+      message: accessError,
+    });
+  }
+
+  if (updatedRequest.stockConfirmedAt || normalizeRequestStatus(updatedRequest.status) === "CONCLUIDA_CONFIRMADA") {
+    return res.status(409).json({
+      message: "Esta vacinacao ja foi confirmada pela granja.",
+    });
+  }
+
+  if (isAwaitingAdminConfirmationStatus(status)) {
     const usageConfirmation = normalizeVaccinationUsageConfirmation(
       req.body.usageConfirmation || req.body.vaccineUsageConfirmation || req.body.actualVaccineUsages,
       updatedRequest
     );
-    const stockUsageResult = applyVaccinationStockUsage(tenantData, updatedRequest, usageConfirmation, {
-      now,
-      responsible: updatedRequest.vaccinatorName || "",
-    });
+    const validationMessage = validateVaccinationUsageConfirmation(tenantData, updatedRequest, usageConfirmation);
 
-    if (stockUsageResult.error) {
+    if (validationMessage) {
       return res.status(400).json({
-        message: stockUsageResult.error,
+        message: validationMessage,
       });
     }
 
     updatedRequest = {
       ...updatedRequest,
+      status: "AGUARDANDO_CONFIRMACAO_ADMIN",
       usageConfirmation,
-      actualVaccineUsages: stockUsageResult.actualUsages,
-      reversedPlannedOutputs: stockUsageResult.reversedPlannedOutputs.map((output) => ({
-        id: output.id,
-        vaccineId: output.vaccineId,
-        vacina: output.vacina,
-        doses: Number(output.doses || 0),
-        source: output.source || "",
-      })),
-      stockConfirmedAt: stockUsageResult.stockConfirmedAt,
-      stockConfirmedAtIso: stockUsageResult.stockConfirmedAtIso,
+      actualVaccineUsages: usageConfirmation
+        .filter((item) => item.quantityUsed > 0)
+        .map((item) => ({
+          ...item,
+          doses: item.quantityUsed,
+        })),
+      completionObservation: String(req.body.completionObservation || req.body.observations || "").trim(),
+      ...getStatusTimestamps("AGUARDANDO_CONFIRMACAO_ADMIN", answeredAt, now.toISOString()),
     };
-    tenantData.requests = tenantData.requests.map((request) => (
-      String(request.id) === String(updatedRequest.id)
-        ? updatedRequest
-        : request
-    ));
-    tenantData.schedules = tenantData.schedules.map((schedule) => (
-      String(schedule.id) === String(updatedRequest.scheduleId)
-        ? {
-            ...schedule,
-            usageConfirmation,
-            actualVaccineUsages: stockUsageResult.actualUsages,
-            stockConfirmedAt: stockUsageResult.stockConfirmedAt,
-            stockConfirmedAtIso: stockUsageResult.stockConfirmedAtIso,
-          }
-        : schedule
-    ));
-
-    const notification = createVaccinationCompletedNotification(updatedRequest);
+    notificationForFarm = createVaccinationAwaitingAdminNotification(updatedRequest);
 
     tenantData.notifications = removeNotificationsForRequest(
       tenantData.notifications,
       updatedRequest.id,
-      "VACCINATION_COMPLETED"
+      "VACCINATION_AWAITING_ADMIN"
     );
-    tenantData.notifications.push(notification);
-    await queueFarmExternalNotification(data, targetTenantId, tenantData, notification, {
-      dedupeKey: `vaccination-completed:${updatedRequest.id}:${updatedRequest.completedAtIso || Date.now()}`,
+    tenantData.notifications.push(notificationForFarm);
+  } else if (status === "RECUSADA") {
+    updatedRequest = {
+      ...updatedRequest,
+      refusalReason: String(req.body.refusalReason || req.body.reason || "").trim(),
+      statusReason: String(req.body.refusalReason || req.body.reason || "").trim(),
+    };
+  } else if (status === "AJUSTE_SOLICITADO") {
+    updatedRequest = {
+      ...updatedRequest,
+      adjustmentReason: String(req.body.adjustmentReason || req.body.reason || "").trim(),
+      statusReason: String(req.body.adjustmentReason || req.body.reason || "").trim(),
+    };
+  }
+
+  tenantData.requests = tenantData.requests.map((request) => (
+    String(request.id) === String(updatedRequest.id)
+      ? updatedRequest
+      : request
+  ));
+
+  tenantData.schedules = tenantData.schedules.map((schedule) => (
+    String(schedule.id) === String(updatedRequest.scheduleId)
+      ? {
+          ...schedule,
+          status: updatedRequest.status,
+          usageConfirmation: updatedRequest.usageConfirmation,
+          actualVaccineUsages: updatedRequest.actualVaccineUsages,
+          completionObservation: updatedRequest.completionObservation,
+          refusalReason: updatedRequest.refusalReason,
+          adjustmentReason: updatedRequest.adjustmentReason,
+          ...statusTimestamps,
+        }
+      : schedule
+  ));
+
+  if (notificationForFarm) {
+    await queueFarmExternalNotification(data, targetTenantId, tenantData, notificationForFarm, {
+      dedupeKey: `vaccination-awaiting-admin:${updatedRequest.id}:${updatedRequest.awaitingAdminConfirmationAtIso || Date.now()}`,
     });
   }
 
@@ -1929,23 +1957,52 @@ app.post("/api/vacitech/requests/:id/confirm-completion", async (req, res) => {
     });
   }
 
-  if (normalizeRequestStatus(request.status) !== "CONCLUIDA") {
+  if (!isAwaitingAdminConfirmationStatus(request.status)) {
     return res.status(400).json({
-      message: "A vacinacao precisa estar marcada como concluida pelo vacinador antes da confirmacao.",
+      message: "A vacinacao precisa estar aguardando confirmacao do administrador.",
     });
   }
 
   const confirmedAtDate = new Date();
   const confirmedAt = confirmedAtDate.toLocaleString("pt-BR");
-  const materialsUsed = buildVaccinationMaterials(request);
+  const usageConfirmation = normalizeVaccinationUsageConfirmation(
+    request.usageConfirmation || request.actualVaccineUsages,
+    request
+  );
+  const stockUsageResult = applyVaccinationStockUsage(tenantData, request, usageConfirmation, {
+    now: confirmedAtDate,
+    responsible: req.account?.name || req.account?.email || "Administrador",
+  });
+
+  if (stockUsageResult.error) {
+    return res.status(400).json({
+      message: stockUsageResult.error,
+    });
+  }
+
+  const requestWithStock = {
+    ...request,
+    usageConfirmation,
+    actualVaccineUsages: stockUsageResult.actualUsages,
+    reversedPlannedOutputs: stockUsageResult.reversedPlannedOutputs.map((output) => ({
+      id: output.id,
+      vaccineId: output.vaccineId,
+      vacina: output.vacina,
+      doses: Number(output.doses || 0),
+      source: output.source || "",
+    })),
+    stockConfirmedAt: stockUsageResult.stockConfirmedAt,
+    stockConfirmedAtIso: stockUsageResult.stockConfirmedAtIso,
+  };
+  const materialsUsed = buildVaccinationMaterials(requestWithStock);
   const returnedVaccines = normalizeReturnedVaccines(req.body.returnedVaccines);
   const completedRecord = {
-    ...request,
-    status: "CONCLUIDA",
+    ...requestWithStock,
+    status: "CONCLUIDA_CONFIRMADA",
     materialsUsed,
     returnedVaccines,
     completionTiming: String(req.body.completionTiming || "PONTUAL").toUpperCase(),
-    completionSummary: buildVaccinationCompletionSummary(request, materialsUsed),
+    completionSummary: buildVaccinationCompletionSummary(requestWithStock, materialsUsed),
     systemConfirmedAt: confirmedAt,
     systemConfirmedAtIso: confirmedAtDate.toISOString(),
     archivedAt: confirmedAt,
@@ -1962,17 +2019,230 @@ app.post("/api/vacitech/requests/:id/confirm-completion", async (req, res) => {
     String(schedule.id) === String(request.scheduleId)
       ? {
           ...schedule,
-          status: "CONCLUIDA",
+          status: "CONCLUIDA_CONFIRMADA",
+          usageConfirmation,
+          actualVaccineUsages: stockUsageResult.actualUsages,
+          stockConfirmedAt: stockUsageResult.stockConfirmedAt,
+          stockConfirmedAtIso: stockUsageResult.stockConfirmedAtIso,
           systemConfirmedAt: confirmedAt,
           systemConfirmedAtIso: confirmedAtDate.toISOString(),
         }
       : schedule
   ));
 
+  await recordAuditLog({
+    tenantId: req.tenantId,
+    userId: req.account?.id,
+    action: "vaccination.confirmed",
+    entity: "VaccinationRequest",
+    entityId: request.id,
+    oldValue: request,
+    newValue: completedRecord,
+    ip: req.ip,
+    userAgent: req.headers["user-agent"],
+  });
+
   data.tenants[req.tenantId] = tenantData;
   await writeVacitechData(data);
 
   sendVaccinationCompletionPdf(res, completedRecord);
+});
+
+app.post("/api/vacitech/requests/:id/review", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const request = tenantData.requests.find((item) => String(item.id) === String(req.params.id));
+
+  if (!request) {
+    return res.status(404).json({
+      message: "Solicitacao nao encontrada",
+    });
+  }
+
+  if (!isAwaitingAdminConfirmationStatus(request.status) && normalizeRequestStatus(request.status) !== "AJUSTE_SOLICITADO") {
+    return res.status(400).json({
+      message: "Esta vacinacao nao esta aguardando revisao.",
+    });
+  }
+
+  const action = String(req.body.action || "").trim().toUpperCase();
+  const reason = String(req.body.reason || "").trim();
+  const now = new Date();
+  const nowLabel = now.toLocaleString("pt-BR");
+  let nextStatus = "";
+  let notification = null;
+
+  if (action === "ADJUSTMENT" || action === "AJUSTE") {
+    nextStatus = "AJUSTE_SOLICITADO";
+  } else if (action === "REJECT" || action === "REJEITAR") {
+    nextStatus = "RECUSADA";
+  } else {
+    return res.status(400).json({
+      message: "Informe uma acao valida: ADJUSTMENT ou REJECT.",
+    });
+  }
+
+  const timestamps = getStatusTimestamps(nextStatus, nowLabel, now.toISOString());
+  const updatedRequest = {
+    ...request,
+    status: nextStatus,
+    statusReason: reason,
+    adjustmentReason: nextStatus === "AJUSTE_SOLICITADO" ? reason : request.adjustmentReason,
+    rejectedReason: nextStatus === "RECUSADA" ? reason : request.rejectedReason,
+    rejectedAt: nextStatus === "RECUSADA" ? nowLabel : request.rejectedAt,
+    rejectedAtIso: nextStatus === "RECUSADA" ? now.toISOString() : request.rejectedAtIso,
+    ...timestamps,
+  };
+
+  tenantData.requests = tenantData.requests.map((item) => (
+    String(item.id) === String(request.id) ? updatedRequest : item
+  ));
+  tenantData.schedules = tenantData.schedules.map((schedule) => (
+    String(schedule.id) === String(request.scheduleId)
+      ? {
+          ...schedule,
+          status: nextStatus,
+          statusReason: reason,
+          adjustmentReason: updatedRequest.adjustmentReason,
+          rejectedReason: updatedRequest.rejectedReason,
+          ...timestamps,
+        }
+      : schedule
+  ));
+
+  notification = nextStatus === "AJUSTE_SOLICITADO"
+    ? createVaccinationAdjustmentNotification(updatedRequest, reason)
+    : createVaccinationRejectedNotification(updatedRequest, reason);
+  tenantData.notifications.push(notification);
+
+  const vaccinator = tenantData.vaccinators.find((item) => matchesVaccinator(item, updatedRequest)) || updatedRequest;
+  await queueVaccinatorExternalNotification(tenantData, notification, vaccinator, {
+    dedupeKey: `${notification.type}:${updatedRequest.id}:${now.toISOString()}`,
+  });
+
+  await recordAuditLog({
+    tenantId: req.tenantId,
+    userId: req.account?.id,
+    action: nextStatus === "AJUSTE_SOLICITADO" ? "vaccination.adjustment_requested" : "vaccination.rejected",
+    entity: "VaccinationRequest",
+    entityId: request.id,
+    oldValue: request,
+    newValue: updatedRequest,
+    ip: req.ip,
+    userAgent: req.headers["user-agent"],
+  });
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    request: updatedRequest,
+    requests: tenantData.requests,
+    schedules: tenantData.schedules,
+    notifications: tenantData.notifications,
+    notificationOutbox: tenantData.notificationOutbox,
+  });
+});
+
+app.post("/api/vacitech/requests/:id/messages", async (req, res) => {
+  const data = await readVacitechData();
+  const targetTenantId = req.tenantId || findTenantIdByRequestId(data, req.params.id);
+
+  if (!targetTenantId) {
+    return res.status(404).json({
+      message: "Solicitacao nao encontrada",
+    });
+  }
+
+  const tenantData = getTenantData(data, targetTenantId);
+  if (isTenantArchived(tenantData)) {
+    return res.status(403).json({
+      message: "Esta granja esta excluida temporariamente.",
+    });
+  }
+
+  const request = tenantData.requests.find((item) => String(item.id) === String(req.params.id));
+
+  if (!request) {
+    return res.status(404).json({
+      message: "Solicitacao nao encontrada",
+    });
+  }
+
+  const text = String(req.body.message || req.body.text || "").trim();
+
+  if (!text) {
+    return res.status(400).json({
+      message: "Escreva uma mensagem para enviar.",
+    });
+  }
+
+  const senderType = req.tenantId ? "ADMIN" : "VACCINATOR";
+  const accessError = senderType === "VACCINATOR"
+    ? validateVaccinatorRequestAccess(req, request)
+    : "";
+
+  if (accessError) {
+    return res.status(403).json({
+      message: accessError,
+    });
+  }
+
+  const createdAtDate = new Date();
+  const message = {
+    id: `msg-${createdAtDate.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+    senderType,
+    senderName: senderType === "ADMIN"
+      ? (req.account?.name || req.account?.email || "Administrador")
+      : (request.vaccinatorName || req.body.senderName || "Vacinador"),
+    text,
+    createdAt: createdAtDate.toLocaleString("pt-BR"),
+    createdAtIso: createdAtDate.toISOString(),
+  };
+  let updatedRequest = {
+    ...request,
+    messages: [
+      ...(Array.isArray(request.messages) ? request.messages : []),
+      message,
+    ],
+  };
+
+  tenantData.requests = tenantData.requests.map((item) => (
+    String(item.id) === String(request.id) ? updatedRequest : item
+  ));
+  tenantData.schedules = tenantData.schedules.map((schedule) => (
+    String(schedule.id) === String(request.scheduleId)
+      ? {
+          ...schedule,
+          messages: updatedRequest.messages,
+        }
+      : schedule
+  ));
+
+  const notification = createVaccinationMessageNotification(updatedRequest, message);
+  tenantData.notifications.push(notification);
+
+  if (senderType === "ADMIN") {
+    const vaccinator = tenantData.vaccinators.find((item) => matchesVaccinator(item, updatedRequest)) || updatedRequest;
+    await queueVaccinatorExternalNotification(tenantData, notification, vaccinator, {
+      dedupeKey: `vaccination-message:${updatedRequest.id}:${message.id}`,
+    });
+  } else {
+    await queueFarmExternalNotification(data, targetTenantId, tenantData, notification, {
+      dedupeKey: `vaccination-message:${updatedRequest.id}:${message.id}`,
+    });
+  }
+
+  data.tenants[targetTenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    request: updatedRequest,
+    requests: tenantData.requests,
+    schedules: tenantData.schedules,
+    notifications: tenantData.notifications,
+    notificationOutbox: tenantData.notificationOutbox,
+  });
 });
 
 app.patch("/api/vacitech/requests/:id/temperature-photo", async (req, res) => {
@@ -2126,6 +2396,14 @@ app.post("/api/vacitech/requests/:id/dose-request", async (req, res) => {
   if (!updatedRequest) {
     return res.status(404).json({
       message: "Solicitacao nao encontrada",
+    });
+  }
+
+  const accessError = validateVaccinatorRequestAccess(req, updatedRequest);
+
+  if (accessError) {
+    return res.status(403).json({
+      message: accessError,
     });
   }
 
@@ -3625,7 +3903,7 @@ function filterTenantDataForAccount(tenantData, account) {
     filteredData.schedules = [];
   }
 
-  if (!hasAnyPermission(account, [ACCESS_MODULES.SOLICITACOES, ACCESS_MODULES.PROGRAMA])) {
+  if (!hasAnyPermission(account, [ACCESS_MODULES.SOLICITACOES, ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.ESTOQUE])) {
     filteredData.requests = [];
   }
 
@@ -3770,6 +4048,7 @@ function isPublicVaccinatorRoute(req) {
     (req.method === "PATCH" && /^\/requests\/[^/]+\/status$/.test(req.path)) ||
     (req.method === "PATCH" && /^\/requests\/[^/]+\/temperature-photo$/.test(req.path)) ||
     (req.method === "POST" && /^\/requests\/[^/]+\/dose-request$/.test(req.path)) ||
+    (req.method === "POST" && /^\/requests\/[^/]+\/messages$/.test(req.path)) ||
     (req.method === "POST" && /^\/requests\/[^/]+\/postpone$/.test(req.path))
   );
 }
@@ -3791,7 +4070,7 @@ function findVaccinatorAcrossTenants(data, search) {
     const vaccinator = (tenantData.vaccinators || []).find((item) => (
       search.id
         ? String(item.id) === String(search.id)
-        : sameContact(item, search)
+        : matchesVaccinatorCredential(item, search) || sameContact(item, search)
     ));
 
     if (vaccinator) {
@@ -3901,6 +4180,29 @@ function getStatusTimestamps(status, nowLabel, nowIso) {
     return {
       completedAt: nowLabel,
       completedAtIso: nowIso,
+    };
+  }
+
+  if (status === "AGUARDANDO_CONFIRMACAO_ADMIN") {
+    return {
+      completedAt: nowLabel,
+      completedAtIso: nowIso,
+      awaitingAdminConfirmationAt: nowLabel,
+      awaitingAdminConfirmationAtIso: nowIso,
+    };
+  }
+
+  if (status === "AJUSTE_SOLICITADO") {
+    return {
+      adjustmentRequestedAt: nowLabel,
+      adjustmentRequestedAtIso: nowIso,
+    };
+  }
+
+  if (status === "CONCLUIDA_CONFIRMADA") {
+    return {
+      systemConfirmedAt: nowLabel,
+      systemConfirmedAtIso: nowIso,
     };
   }
 
@@ -4047,6 +4349,8 @@ function normalizeVaccinator(data = {}) {
     name: String(data.name || "").trim(),
     email: String(data.email || "").trim(),
     phone: String(data.phone || "").trim(),
+    cpf: String(data.cpf || data.document || "").trim(),
+    code: String(data.code || data.codigo || "").trim(),
     notificationContact: String(data.notificationContact || "").trim(),
     status: data.status || "ATIVO",
   };
@@ -4229,9 +4533,10 @@ function validateVaccinationUsageConfirmation(tenantData, request, usageConfirma
 }
 
 function applyVaccinationStockUsage(tenantData, request, usageConfirmation, metadata = {}) {
+  const actualStockSources = new Set(["VACINACAO_CONFIRMADA_APP", "VACINACAO_CONFIRMADA_ADMIN"]);
   const existingActualOutputs = (tenantData.outputs || []).filter((output) => (
     isActiveStockOutput(output) &&
-    String(output.source || "").toUpperCase() === "VACINACAO_CONFIRMADA_APP" &&
+    actualStockSources.has(String(output.source || "").toUpperCase()) &&
     String(output.requestId || "") === String(request.id)
   ));
 
@@ -4293,7 +4598,7 @@ function applyVaccinationStockUsage(tenantData, request, usageConfirmation, meta
     tenantData.outputs.push({
       id: outputBaseId + index,
       groupId: `uso-real-${request.id}`,
-      source: "VACINACAO_CONFIRMADA_APP",
+      source: "VACINACAO_CONFIRMADA_ADMIN",
       scheduleId: request.scheduleId || "",
       requestId: request.id,
       vaccineId: item.vaccineId,
@@ -4318,7 +4623,7 @@ function applyVaccinationStockUsage(tenantData, request, usageConfirmation, meta
       programDay: request.programDay || "",
       destino: request.birdLotName || request.farmName || "Vacinacao",
       responsavel: request.vaccinatorName || metadata.responsible || "Vacinador",
-      observacao: `Uso real confirmado pelo app. Levou ${formatQuantity(item.quantityTaken)} dose(s), usou ${formatQuantity(item.quantityUsed)} dose(s), sobrou ${formatQuantity(item.quantityReturned) || 0} dose(s).`,
+      observacao: `Uso real confirmado pelo administrador. Levou ${formatQuantity(item.quantityTaken)} dose(s), usou ${formatQuantity(item.quantityUsed)} dose(s), sobrou ${formatQuantity(item.quantityReturned) || 0} dose(s).`,
       data: now.toLocaleDateString("pt-BR"),
       createdAt,
     });
@@ -4331,8 +4636,8 @@ function applyVaccinationStockUsage(tenantData, request, usageConfirmation, meta
       requestId: request.id,
       scheduleId: request.scheduleId || "",
       vaccineName: "Vacinacao concluida",
-      reason: "Baixa real de estoque confirmada pelo app do vacinador.",
-      responsible: request.vaccinatorName || metadata.responsible || "Vacinador",
+      reason: "Baixa real de estoque confirmada pelo administrador apos conferencia do app do vacinador.",
+      responsible: metadata.responsible || "Administrador",
       usageConfirmation,
       reversedPlannedOutputs: plannedOutputs.map((output) => ({
         id: output.id,
@@ -4780,7 +5085,13 @@ function getDateOnly(value) {
 function isVaccinationOverdue(request, todayStart) {
   const status = normalizeRequestStatus(request.status);
 
-  if (status === "CONCLUIDA" || status === "RECUSADA") {
+  if (
+    status === "CONCLUIDA" ||
+    status === "CONCLUIDA_CONFIRMADA" ||
+    status === "AGUARDANDO_CONFIRMACAO_ADMIN" ||
+    status === "RECUSADA" ||
+    status === "CANCELADA"
+  ) {
     return false;
   }
 
@@ -4854,6 +5165,73 @@ function sameContact(first, second) {
   );
 }
 
+function normalizeCredential(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function matchesVaccinatorCredential(item, search = {}) {
+  const credential = normalizeCredential(
+    search.credential ||
+    search.login ||
+    search.code ||
+    search.cpf ||
+    search.email ||
+    search.phone
+  );
+
+  if (!credential) {
+    return false;
+  }
+
+  const credentialDigits = normalizePhone(credential);
+  const candidates = [
+    item.email,
+    item.vaccinatorEmail,
+    item.phone,
+    item.vaccinatorPhone,
+    item.cpf,
+    item.document,
+    item.code,
+    item.codigo,
+  ]
+    .map((value) => normalizeCredential(value))
+    .filter(Boolean);
+
+  return candidates.some((candidate) => (
+    candidate === credential ||
+    (credentialDigits && normalizePhone(candidate) === credentialDigits)
+  ));
+}
+
+function validateVaccinatorRequestAccess(req, request) {
+  if (req.tenantId) {
+    return "";
+  }
+
+  const requestVaccinatorId = String(request.vaccinatorId || "").trim();
+  const providedVaccinatorId = String(req.body.vaccinatorId || "").trim();
+
+  if (providedVaccinatorId && requestVaccinatorId && providedVaccinatorId !== requestVaccinatorId) {
+    return "Este vacinador nao tem permissao para alterar esta vacinacao.";
+  }
+
+  const providedEmail = normalizeEmail(req.body.vaccinatorEmail || req.body.email);
+  const requestEmail = normalizeEmail(request.vaccinatorEmail);
+
+  if (providedEmail && requestEmail && providedEmail !== requestEmail) {
+    return "Este vacinador nao tem permissao para alterar esta vacinacao.";
+  }
+
+  const providedPhone = normalizePhone(req.body.vaccinatorPhone || req.body.phone);
+  const requestPhone = normalizePhone(request.vaccinatorPhone);
+
+  if (providedPhone && requestPhone && providedPhone !== requestPhone) {
+    return "Este vacinador nao tem permissao para alterar esta vacinacao.";
+  }
+
+  return "";
+}
+
 function matchesVaccinator(item, vaccinator) {
   if (!item || !vaccinator) {
     return false;
@@ -4879,16 +5257,50 @@ function normalizeRequestStatus(status) {
     return "RECUSADA";
   }
 
+  if (status === "ACEITA") {
+    return "CONFIRMADA";
+  }
+
+  if (status === "EM_EXECUCAO") {
+    return "EM_ANDAMENTO";
+  }
+
+  if (status === "ENVIADA_PARA_CONFERENCIA") {
+    return "AGUARDANDO_CONFIRMACAO_ADMIN";
+  }
+
   if (
     status === "CONFIRMADA" ||
     status === "RECUSADA" ||
     status === "EM_ANDAMENTO" ||
-    status === "CONCLUIDA"
+    status === "CONCLUIDA" ||
+    status === "AGUARDANDO_CONFIRMACAO_ADMIN" ||
+    status === "CONCLUIDA_CONFIRMADA" ||
+    status === "AJUSTE_SOLICITADO" ||
+    status === "CANCELADA"
   ) {
     return status;
   }
 
   return "PENDENTE";
+}
+
+function isAwaitingAdminConfirmationStatus(status) {
+  const normalizedStatus = normalizeRequestStatus(status);
+
+  return (
+    normalizedStatus === "AGUARDANDO_CONFIRMACAO_ADMIN" ||
+    normalizedStatus === "CONCLUIDA"
+  );
+}
+
+function isClosedVaccinationStatus(status) {
+  const normalizedStatus = normalizeRequestStatus(status);
+
+  return (
+    normalizedStatus === "CONCLUIDA_CONFIRMADA" ||
+    normalizedStatus === "CANCELADA"
+  );
 }
 
 function isTenantArchived(tenantData) {
@@ -4898,7 +5310,7 @@ function isTenantArchived(tenantData) {
 function shouldShowInVaccinatorApp(request) {
   const status = normalizeRequestStatus(request.status);
 
-  return status !== "CONCLUIDA" && status !== "RECUSADA";
+  return !isClosedVaccinationStatus(status);
 }
 
 function matchesVaccinatorEmail(item, vaccinator) {
@@ -5224,6 +5636,87 @@ function createVaccinationCompletedNotification(request) {
   };
 }
 
+function createVaccinationAwaitingAdminNotification(request) {
+  const usageTotal = (request.actualVaccineUsages || request.usageConfirmation || [])
+    .reduce((total, item) => total + Number(item.quantityUsed || item.doses || 0), 0);
+
+  return {
+    id: Date.now() + Math.random(),
+    type: "VACCINATION_AWAITING_ADMIN",
+    requestId: request.id,
+    scheduleId: request.scheduleId,
+    vaccinatorId: request.vaccinatorId,
+    vaccinatorName: request.vaccinatorName,
+    vaccinatorEmail: request.vaccinatorEmail,
+    vaccinatorPhone: request.vaccinatorPhone,
+    vaccinatorNotificationContact: request.vaccinatorNotificationContact,
+    farmName: request.farmName,
+    title: "Vacinacao aguardando confirmacao",
+    message: `${request.vaccinatorName || "Vacinador"} enviou a vacinacao para conferencia. Quantidade usada informada: ${formatQuantity(usageTotal) || 0} dose(s).`,
+    createdAt: request.awaitingAdminConfirmationAt || request.completedAt || new Date().toLocaleString("pt-BR"),
+    read: false,
+  };
+}
+
+function createVaccinationAdjustmentNotification(request, reason = "") {
+  return {
+    id: Date.now() + Math.random(),
+    type: "VACCINATION_ADJUSTMENT_REQUESTED",
+    requestId: request.id,
+    scheduleId: request.scheduleId,
+    vaccinatorId: request.vaccinatorId,
+    vaccinatorName: request.vaccinatorName,
+    vaccinatorEmail: request.vaccinatorEmail,
+    vaccinatorPhone: request.vaccinatorPhone,
+    vaccinatorNotificationContact: request.vaccinatorNotificationContact,
+    farmName: request.farmName,
+    title: "Ajuste solicitado na vacinacao",
+    message: `A granja solicitou ajuste nas informacoes da vacinacao.${reason ? ` Motivo: ${reason}` : ""}`,
+    createdAt: request.adjustmentRequestedAt || new Date().toLocaleString("pt-BR"),
+    read: false,
+  };
+}
+
+function createVaccinationRejectedNotification(request, reason = "") {
+  return {
+    id: Date.now() + Math.random(),
+    type: "VACCINATION_REJECTED",
+    requestId: request.id,
+    scheduleId: request.scheduleId,
+    vaccinatorId: request.vaccinatorId,
+    vaccinatorName: request.vaccinatorName,
+    vaccinatorEmail: request.vaccinatorEmail,
+    vaccinatorPhone: request.vaccinatorPhone,
+    vaccinatorNotificationContact: request.vaccinatorNotificationContact,
+    farmName: request.farmName,
+    title: "Vacinacao rejeitada",
+    message: `A granja rejeitou esta conclusao de vacinacao.${reason ? ` Motivo: ${reason}` : ""}`,
+    createdAt: request.rejectedAt || new Date().toLocaleString("pt-BR"),
+    read: false,
+  };
+}
+
+function createVaccinationMessageNotification(request, message) {
+  const senderLabel = message.senderType === "ADMIN" ? "Granja" : "Vacinador";
+
+  return {
+    id: Date.now() + Math.random(),
+    type: "VACCINATION_MESSAGE",
+    requestId: request.id,
+    scheduleId: request.scheduleId,
+    vaccinatorId: request.vaccinatorId,
+    vaccinatorName: request.vaccinatorName,
+    vaccinatorEmail: request.vaccinatorEmail,
+    vaccinatorPhone: request.vaccinatorPhone,
+    vaccinatorNotificationContact: request.vaccinatorNotificationContact,
+    farmName: request.farmName,
+    title: "Nova mensagem na vacinacao",
+    message: `${senderLabel}: ${message.text}`,
+    createdAt: message.createdAt,
+    read: false,
+  };
+}
+
 function createVaccineChangedNotification(request) {
   const vaccineNames = (request.vaccineUsages || [])
     .map((usage) => `${usage.vacina || "Vacina"} (${usage.doses || 0} dose(s))`)
@@ -5269,12 +5762,16 @@ function createVaccinationPostponedNotification(request) {
 function getVaccinatorPortalData(data, vaccinator) {
   const linkedFarms = data.farmProfile?.farmName
     ? [{
+        tenantId: data.tenantId || "",
         farmName: data.farmProfile.farmName,
         city: data.farmProfile.city || "",
         document: data.farmProfile.document || "",
         owner: data.farmProfile.owner || "",
         address: data.farmProfile.address || "",
         location: data.farmProfile.location || "",
+        logoDataUrl: data.tenantSettings?.logoDataUrl || data.farmProfile.logoDataUrl || "",
+        primaryColor: data.tenantSettings?.primaryColor || data.farmProfile.primaryColor || "",
+        secondaryColor: data.tenantSettings?.secondaryColor || data.farmProfile.secondaryColor || "",
       }]
     : [];
 
@@ -5316,13 +5813,18 @@ function getPublicVaccinatorPortalData(data, vaccinator) {
     }
 
     if (tenantData.farmProfile?.farmName) {
+      const tenantSettings = normalizeTenantSettings(tenantId, tenantData);
       linkedFarms.push({
+        tenantId,
         farmName: tenantData.farmProfile.farmName,
         city: tenantData.farmProfile.city || "",
         document: tenantData.farmProfile.document || "",
         owner: tenantData.farmProfile.owner || "",
         address: tenantData.farmProfile.address || "",
         location: tenantData.farmProfile.location || "",
+        logoDataUrl: tenantSettings.logoDataUrl || "",
+        primaryColor: tenantSettings.primaryColor || "",
+        secondaryColor: tenantSettings.secondaryColor || "",
       });
     }
 

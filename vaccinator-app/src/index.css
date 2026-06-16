@@ -542,6 +542,18 @@ textarea:focus {
   color: #ffffff;
 }
 
+.status-review {
+  background: #f3e8ff;
+  border-color: #e9d5ff;
+  color: #7e22ce;
+}
+
+.status-adjustment {
+  background: #ffedd5;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
 .status-pending {
   background: #fef9c3;
   border-color: #fde68a;
@@ -749,6 +761,89 @@ textarea:focus {
   background: #18181b;
   min-height: 220px;
   width: 100%;
+}
+
+.farm-card-head {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.farm-color {
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px #bbf7d0;
+  height: 22px;
+  width: 22px;
+}
+
+.chat-box textarea {
+  min-height: 86px;
+}
+
+.chat-list,
+.review-list {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-message,
+.review-card {
+  background: #ffffff;
+  border: 1px solid #dcfce7;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.chat-message strong {
+  color: #14532d;
+}
+
+.chat-message p {
+  color: #3f3f46;
+  line-height: 1.45;
+  margin: 6px 0;
+  white-space: pre-wrap;
+}
+
+.chat-message span,
+.review-card span:not(.status) {
+  color: #15803d;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.chat-admin {
+  border-color: #bbf7d0;
+}
+
+.chat-vaccinator {
+  border-color: #d9f99d;
+}
+
+.adjustment-box {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.review-section {
+  background: #ffffff;
+  border: 1px solid #dcfce7;
+  border-radius: 18px;
+  margin-top: 18px;
+  padding: 16px;
+}
+
+.review-section h3 {
+  margin: 0 0 6px;
+}
+
+.review-card {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
 }
 
 @media (min-width: 760px) {
