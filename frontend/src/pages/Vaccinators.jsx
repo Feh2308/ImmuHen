@@ -30,17 +30,22 @@ function getVaccinatorAppUrl() {
     return configuredUrl.replace(/\/$/, "");
   }
 
-  const { hostname, port, protocol } = window.location;
+  const { hostname, origin, port, protocol } = window.location;
+  const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(hostname);
 
   if (hostname.startsWith("app.")) {
     return `${protocol}//${hostname.replace(/^app\./, "vacinador.")}`;
   }
 
-  if (port === "5173" || port === "4173") {
+  if (isLocalHost && (port === "5173" || port === "4173")) {
     return `${protocol}//${hostname}:${port === "4173" ? "4174" : "5174"}`;
   }
 
-  return `${protocol}//${hostname}:5174`;
+  if (isLocalHost) {
+    return `${protocol}//${hostname}:5174`;
+  }
+
+  return `${origin.replace(/\/$/, "")}/vacinador`;
 }
 
 function Vaccinators() {
