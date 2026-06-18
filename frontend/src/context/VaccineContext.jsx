@@ -923,18 +923,11 @@ export function VaccineProvider({
   function clearStock(metadata = {}) {
     const clearedAt = new Date().toLocaleString("pt-BR");
     const clearedAtIso = new Date().toISOString();
-    const preserveVaccineIds = new Set(
-      (Array.isArray(metadata.preserveVaccineIds) ? metadata.preserveVaccineIds : [])
-        .map((id) => String(id || "").trim())
-        .filter(Boolean)
-    );
     const activeOutputs = outputs.filter(isActiveOutput);
-    const removedVaccines = vaccines.filter((vaccine) => !preserveVaccineIds.has(String(vaccine.id)));
     const removedEntryDoses = entries.reduce((total, entry) => total + Number(entry.doses || 0), 0);
     const clearedOutputDoses = activeOutputs.reduce((total, output) => total + Number(output.doses || 0), 0);
     const stockBefore = vaccines.reduce((total, vaccine) => total + getStockFromLists(entries, outputs, vaccine.id), 0);
 
-    setVaccines((currentVaccines) => currentVaccines.filter((vaccine) => preserveVaccineIds.has(String(vaccine.id))));
     setEntries([]);
     setOutputs((currentOutputs) => currentOutputs.map((output) => (
       isActiveOutput(output)
@@ -959,13 +952,7 @@ export function VaccineProvider({
         clearedOutputDoses,
         removedEntriesCount: entries.length,
         clearedOutputsCount: activeOutputs.length,
-        removedVaccinesCount: removedVaccines.length,
-        removedVaccines: removedVaccines.map((vaccine) => ({
-          id: vaccine.id,
-          nome: vaccine.nome,
-          codigo: vaccine.codigo,
-        })),
-        preservedVaccinesCount: preserveVaccineIds.size,
+        preservedVaccinesCount: vaccines.length,
         clearedBy: metadata.clearedBy || "Administrador",
         createdAt: clearedAt,
       },

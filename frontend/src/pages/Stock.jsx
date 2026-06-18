@@ -107,25 +107,6 @@ function getStatus(saldo) {
   };
 }
 
-function collectVaccineIdsFromUsages(record, targetSet) {
-  [
-    record?.vaccineUsages,
-    record?.actualVaccineUsages,
-    record?.usageConfirmation,
-    record?.returnedVaccines,
-  ].forEach((items) => {
-    if (!Array.isArray(items)) {
-      return;
-    }
-
-    items.forEach((item) => {
-      if (item?.vaccineId) {
-        targetSet.add(String(item.vaccineId));
-      }
-    });
-  });
-}
-
 function formatAuditType(type) {
   const labels = {
     "stock-cleared": "Estoque limpo",
@@ -440,29 +421,16 @@ function Stock() {
   }
 
   function handleClearStock() {
-    const schedules = readJson("schedules", []);
-    const completedVaccinations = readJson("completedVaccinations", []);
-    const preserveVaccineIds = new Set();
-
-    outputs.forEach((output) => {
-      if (output.vaccineId) {
-        preserveVaccineIds.add(String(output.vaccineId));
-      }
-    });
-    requests.forEach((request) => collectVaccineIdsFromUsages(request, preserveVaccineIds));
-    schedules.forEach((schedule) => collectVaccineIdsFromUsages(schedule, preserveVaccineIds));
-    completedVaccinations.forEach((record) => collectVaccineIdsFromUsages(record, preserveVaccineIds));
-
-    const removableVaccines = vaccines.filter((vaccine) => !preserveVaccineIds.has(String(vaccine.id)));
     const message = [
       "Limpar o estoque atual?",
       "",
       `Doses em estoque que serao zeradas: ${totals.saldo}`,
       `Entradas removidas do estoque atual: ${entries.length}`,
       `Baixas preservadas no historico e retiradas do saldo: ${outputs.filter(isActiveOutput).length}`,
-      `Vacinas sem uso que serao removidas: ${removableVaccines.length}`,
+      `Vacinas cadastradas mantidas: ${vaccines.length}`,
       "",
-      "Cadastro da granja, usuarios, vacinadores e configuracoes serao mantidos.",
+      "Cadastro da granja, usuarios, vacinadores, vacinas e configuracoes serao mantidos.",
+      "Depois, faca uma nova entrada para informar valor, lote, validade e doses do estoque atual.",
       "Digite LIMPAR ESTOQUE para confirmar.",
     ].join("\n");
     const confirmation = window.prompt(message);
@@ -472,7 +440,6 @@ function Stock() {
     }
 
     clearStock({
-      preserveVaccineIds: Array.from(preserveVaccineIds),
       reason: "Limpeza geral do estoque feita pela tela Estoque.",
       clearedBy: "Administrador",
     });
@@ -1032,7 +999,7 @@ function Stock() {
                   </td>
                   <td className="min-w-64 max-w-md whitespace-normal break-words text-zinc-600">
                     {item.type === "stock-cleared"
-                      ? `Estoque anterior: ${item.stockBefore || 0}. Entradas removidas: ${item.removedEntriesCount || 0}. Baixas limpas: ${item.clearedOutputsCount || 0}. Vacinas sem uso removidas: ${item.removedVaccinesCount || 0}.`
+                      ? `Estoque anterior: ${item.stockBefore || 0}. Entradas removidas: ${item.removedEntriesCount || 0}. Baixas limpas: ${item.clearedOutputsCount || 0}. Vacinas mantidas: ${item.preservedVaccinesCount || 0}.`
                       : item.reason || item.observacao || "-"}
                   </td>
                   <td>{item.clearedBy || item.approvedBy || item.requestedBy || "Sistema"}</td>
