@@ -6834,6 +6834,54 @@ function getOwnerAdminHtml() {
 </html>`;
 }
 
+app.use((error, req, res, next) => {
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  const safeError = getSafeApiError(error);
+  console.error(`[${safeError.code}] ${error?.stack || error?.message || error}`);
+
+  return res.status(safeError.status).json({
+    message: safeError.message,
+    code: safeError.code,
+  });
+});
+
+function getSafeApiError(error) {
+  const message = String(error?.message || "");
+  const normalizedMessage = message.toLowerCase();
+
+  if (
+    normalizedMessage.includes("data transfer quota") ||
+    normalizedMessage.includes("exceeded the data transfer quota")
+  ) {
+    return {
+      status: 503,
+      code: "DATABASE_TRANSFER_QUOTA_EXCEEDED",
+      message: "Banco de dados temporariamente indisponivel: o projeto Neon excedeu a quota de transferencia. Ajuste o plano/quota no Neon ou aguarde a renovacao do limite para liberar o acesso.",
+    };
+  }
+
+  if (
+    error?.name === "PrismaClientInitializationError" ||
+    error?.name === "PrismaClientKnownRequestError" ||
+    normalizedMessage.includes("error querying the database")
+  ) {
+    return {
+      status: 503,
+      code: "DATABASE_UNAVAILABLE",
+      message: "Banco de dados temporariamente indisponivel. Tente novamente em alguns minutos ou verifique o provedor do banco.",
+    };
+  }
+
+  return {
+    status: 500,
+    code: "INTERNAL_SERVER_ERROR",
+    message: "Erro interno no servidor ImmuHen. Tente novamente em alguns minutos.",
+  };
+}
+
 /* =========================
    START SERVER
 ========================= */

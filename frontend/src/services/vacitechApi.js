@@ -1,6 +1,19 @@
+const PRODUCTION_API_URL = "https://immuhen.onrender.com";
+
+function getDefaultApiUrl() {
+  const hostname = window.location.hostname;
+  const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(hostname);
+
+  if (isLocalHost) {
+    return `${window.location.protocol}//${hostname}:3001`;
+  }
+
+  return PRODUCTION_API_URL;
+}
+
 export const API_BASE_URL = (
   import.meta.env.VITE_API_URL ||
-  `${window.location.protocol}//${window.location.hostname}:3001`
+  getDefaultApiUrl()
 ).replace(/\/$/, "");
 
 export const PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_PAYMENTS === "true";
@@ -15,14 +28,20 @@ function getOwnerToken() {
 
 async function apiRequest(path, options = {}) {
   const token = getAuthToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    throw new Error("Nao foi possivel conectar ao servidor ImmuHen. Verifique a internet e tente novamente.");
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
