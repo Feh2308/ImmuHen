@@ -24,11 +24,33 @@ function saveVaccinators(nextVaccinators) {
   writeJson("vaccinators", nextVaccinators);
 }
 
+function normalizeVaccinatorAppUrl(url) {
+  const fallbackUrl = `${window.location.origin.replace(/\/$/, "")}/vacinador`;
+  const rawUrl = String(url || "").trim();
+
+  if (!rawUrl) {
+    return fallbackUrl;
+  }
+
+  try {
+    const parsedUrl = new URL(rawUrl, window.location.origin);
+    const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(parsedUrl.hostname);
+
+    if (!isLocalHost && (parsedUrl.port === "5174" || parsedUrl.port === "4174")) {
+      parsedUrl.port = "";
+    }
+
+    return parsedUrl.toString().replace(/\/$/, "");
+  } catch (error) {
+    return fallbackUrl;
+  }
+}
+
 function getVaccinatorAppUrl() {
   const configuredUrl = import.meta.env.VITE_VACCINATOR_APP_URL;
 
   if (configuredUrl) {
-    return configuredUrl.replace(/\/$/, "");
+    return normalizeVaccinatorAppUrl(configuredUrl);
   }
 
   const { hostname, origin, port, protocol } = window.location;
@@ -46,7 +68,7 @@ function getVaccinatorAppUrl() {
     return `${protocol}//${hostname}:5174`;
   }
 
-  return `${origin.replace(/\/$/, "")}/vacinador`;
+  return normalizeVaccinatorAppUrl(`${origin.replace(/\/$/, "")}/vacinador`);
 }
 
 function Vaccinators() {

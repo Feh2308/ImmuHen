@@ -6859,7 +6859,7 @@ function getSafeApiError(error) {
     return {
       status: 503,
       code: "DATABASE_TRANSFER_QUOTA_EXCEEDED",
-      message: "Banco de dados temporariamente indisponivel: o projeto Neon excedeu a quota de transferencia. Ajuste o plano/quota no Neon ou aguarde a renovacao do limite para liberar o acesso.",
+      message: "Banco de dados temporariamente indisponivel: o provedor PostgreSQL excedeu a quota de transferencia. Ajuste o plano/quota do banco ou troque a DATABASE_URL para o banco ativo.",
     };
   }
 

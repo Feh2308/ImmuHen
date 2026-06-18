@@ -42,7 +42,8 @@ No backend, use estas variaveis de ambiente na hospedagem:
 
 ```bash
 PORT=3001
-DATABASE_URL=postgresql://usuario:senha@host:5432/granja
+DATABASE_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGIAO.pooler.supabase.com:6543/postgres?pgbouncer=true
+DIRECT_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGIAO.pooler.supabase.com:5432/postgres
 CORS_ORIGIN=https://app-vacinador.sua-granja.com,https://granja-system.sua-granja.com
 SUBSCRIPTION_ADMIN_KEY=troque-esta-chave
 ```
@@ -74,6 +75,7 @@ npm run build
 Publique a pasta `dist` em um dominio HTTPS. No celular, abra o dominio do app e toque em `Instalar app no celular`.
 
 Importante: se o app estiver publicado em HTTPS, a API tambem deve usar HTTPS. Navegadores de celular bloqueiam chamadas de um app HTTPS para uma API HTTP.
+Em producao, nao use `localhost`, IP da rede local, nem portas de desenvolvimento como `5174`.
 
 Resumo do que precisa ficar online:
 

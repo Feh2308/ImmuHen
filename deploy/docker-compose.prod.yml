@@ -1,16 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-granja}
-      POSTGRES_USER: ${POSTGRES_USER:-granja}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - internal
-
   backend:
     build:
       context: ../backend
@@ -18,14 +6,10 @@ services:
     env_file:
       - ./env/backend.env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-granja}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-granja}
       VACITECH_DATA_FILE: /data/vacitech-data.json
     volumes:
       - vacitech-data:/data
-    depends_on:
-      - postgres
     networks:
-      - internal
       - web
 
   frontend:
@@ -68,12 +52,9 @@ services:
       - web
 
 networks:
-  internal:
-    internal: true
   web:
 
 volumes:
-  postgres-data:
   vacitech-data:
   caddy-data:
   caddy-config:

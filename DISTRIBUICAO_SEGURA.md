@@ -37,7 +37,7 @@ No teste local, `API_PUBLIC_URL` pode ficar vazio, mas o Mercado Pago nao conseg
 Use o painel protegido do dono:
 
 ```text
-http://localhost:3001/owner-admin
+https://seu-dominio-api.com/owner-admin
 ```
 
 Entre com a senha `OWNER_ADMIN_KEY`. Ali voce ve:
@@ -89,10 +89,10 @@ O sistema cria Pix pela API do Mercado Pago e, quando o pagamento chega aprovado
 
 ## Instalar como app
 
-Os dois frontends estao preparados como PWA:
+Os dois frontends estao preparados como PWA. Em producao, use dominios HTTPS sem porta de desenvolvimento:
 
-- ImmuHen: `http://IP_DO_SERVIDOR:5173`
-- Vacinador: `http://IP_DO_SERVIDOR:5174`
+- ImmuHen: `https://seu-dominio-granja.com`
+- Vacinador: `https://seu-dominio-vacinador.com`
 
 No celular: abra no Chrome/Edge/Safari e toque em `Adicionar a tela inicial`.
 

@@ -6,22 +6,24 @@ Pagamento fica desligado neste teste. Quando o Mercado Pago estiver pronto, ligu
 
 ## Estrutura
 
-- Banco: Neon PostgreSQL
+- Banco: Supabase PostgreSQL
 - Backend/API: Render Web Service
 - Sistema da granja: Vercel
 - App do vacinador: Vercel
 
-## 1. Banco no Neon
+## 1. Banco no Supabase
 
-1. Crie uma conta em `https://neon.com`.
+1. Crie uma conta em `https://supabase.com`.
 2. Crie um projeto chamado `immuhen`.
-3. Copie a connection string PostgreSQL.
-4. Guarde esse valor como `DATABASE_URL`.
+3. Em `Project Settings` > `Database`, copie duas connection strings:
+   - `DATABASE_URL`: Supabase transaction pooler, porta `6543`, com `?pgbouncer=true`.
+   - `DIRECT_URL`: Supabase session/direct URL, porta `5432`, para migrations do Prisma.
 
 Exemplo:
 
 ```env
-DATABASE_URL=postgresql://usuario:senha@host.neon.tech/dbname?sslmode=require
+DATABASE_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGIAO.pooler.supabase.com:6543/postgres?pgbouncer=true
+DIRECT_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGIAO.pooler.supabase.com:5432/postgres
 ```
 
 ## 2. Backend no Render
@@ -33,14 +35,15 @@ DATABASE_URL=postgresql://usuario:senha@host.neon.tech/dbname?sslmode=require
 
 ```text
 Root Directory: backend
-Build Command: npm install && npx prisma generate && npx prisma db push
+Build Command: npm install && npx prisma generate && npx prisma migrate deploy
 Start Command: npm start
 ```
 
 5. Em `Environment`, adicione:
 
 ```env
-DATABASE_URL=cole_a_url_do_neon
+DATABASE_URL=cole_a_url_pooler_6543_do_supabase
+DIRECT_URL=cole_a_url_5432_do_supabase
 VACITECH_STATE_STORAGE=database
 SUBSCRIPTION_ENFORCEMENT=off
 OWNER_ADMIN_KEY=crie_uma_senha_forte_para_voce

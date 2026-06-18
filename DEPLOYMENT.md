@@ -13,7 +13,8 @@ Estrutura recomendada:
 Variaveis de ambiente:
 
 ```bash
-DATABASE_URL=postgresql://usuario:senha@host:5432/granja
+DATABASE_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGIAO.pooler.supabase.com:6543/postgres?pgbouncer=true
+DIRECT_URL=postgresql://postgres.PROJECT_REF:SENHA@aws-0-REGIAO.pooler.supabase.com:5432/postgres
 PORT=3001
 CORS_ORIGIN=https://granja-system.sua-granja.com,https://app-vacinador.sua-granja.com
 SUBSCRIPTION_ADMIN_KEY=uma-chave-secreta-grande
