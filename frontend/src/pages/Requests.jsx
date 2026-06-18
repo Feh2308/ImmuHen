@@ -8,8 +8,10 @@ import {
   writeJson,
 } from "../utils/vacitechStorage";
 import {
+  clearNotificationsApi,
   confirmVaccinationCompletionApi,
   confirmDoseRequestApi,
+  deleteNotificationApi,
   fetchRequestsApi,
   fetchSharedStateApi,
   reviewVaccinationCompletionApi,
@@ -361,7 +363,41 @@ function Requests() {
       return "Vacina alterada";
     }
 
-    return "Solicitacao de doses";
+    return "Pedido de doses";
+  }
+
+  async function deleteNotification(notificationId) {
+    const confirmed = window.confirm("Apagar esta notificacao?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const data = await deleteNotificationApi(notificationId);
+
+      setNotifications(data.notifications || []);
+      writeJson("vaccinatorNotifications", data.notifications || [], { silent: true });
+    } catch (error) {
+      alert(error.message || "Nao foi possivel apagar a notificacao.");
+    }
+  }
+
+  async function clearAllNotifications() {
+    const confirmed = window.confirm("Apagar todas as notificacoes desta granja?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const data = await clearNotificationsApi();
+
+      setNotifications(data.notifications || []);
+      writeJson("vaccinatorNotifications", data.notifications || [], { silent: true });
+    } catch (error) {
+      alert(error.message || "Nao foi possivel limpar as notificacoes.");
+    }
   }
 
   function getCaptureUrl(requestId) {
@@ -564,7 +600,7 @@ function Requests() {
     const completionForm = getCompletionForm(request);
     const returnedVaccines = getReturnedVaccines(request);
     const confirmed = window.confirm(
-      "Confirmar esta vacinacao e baixar o estoque agora?\n\nO sistema vai descontar somente a quantidade usada informada pelo vacinador, gerar o comprovante em PDF e remover esta solicitacao da lista."
+      "Confirmar esta vacinacao e baixar o estoque agora?\n\nO sistema vai descontar somente a quantidade usada informada pelo vacinador, gerar o comprovante em PDF e remover esta notificacao da lista."
     );
 
     if (!confirmed) {
@@ -615,7 +651,7 @@ function Requests() {
 
     const confirmed = window.confirm(
       isAdjustment
-        ? "Enviar solicitacao de ajuste para o vacinador? O estoque nao sera alterado."
+        ? "Enviar pedido de ajuste para o vacinador? O estoque nao sera alterado."
         : "Rejeitar esta conclusao? O estoque nao sera alterado."
     );
 
@@ -679,11 +715,11 @@ function Requests() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <h1 className="text-3xl font-bold text-zinc-900 md:text-5xl">
-                Solicitacoes
+                Notificacoes
               </h1>
 
               <p className="mt-2 text-zinc-500">
-                Acompanhamento das respostas dos vacinadores.
+                Acompanhe notificacoes, pedidos e respostas dos vacinadores.
               </p>
             </div>
 
@@ -767,6 +803,17 @@ function Requests() {
             Notificacoes do ImmuHen Vacinador
           </h2>
 
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={clearAllNotifications}
+              disabled={visibleNotifications.length === 0}
+              className="rounded-xl bg-red-50 px-4 py-2 font-bold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Limpar notificacoes
+            </button>
+          </div>
+
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             {visibleNotifications.length === 0 && (
               <p className="text-zinc-500">
@@ -791,6 +838,13 @@ function Requests() {
                   <p className="mt-3 text-sm font-semibold text-green-700">
                     {notification.createdAt}
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => deleteNotification(notification.id)}
+                    className="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-bold text-red-600 transition hover:bg-red-50"
+                  >
+                    Apagar
+                  </button>
                 </article>
               ))}
           </div>
@@ -799,7 +853,7 @@ function Requests() {
         <section className="mt-6 grid gap-5">
           {filteredRequests.length === 0 && (
             <div className="rounded-2xl border border-green-100 bg-white p-6 text-zinc-500 shadow-sm">
-              Nenhuma solicitacao encontrada.
+              Nenhuma notificacao encontrada.
             </div>
           )}
 

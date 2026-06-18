@@ -15,7 +15,7 @@ function Sidebar() {
     { to: "/administrador", label: "Administrador", permissions: [ACCESS_MODULES.ADMINISTRADOR] },
     { to: "/agenda", label: "Programa", permissions: [ACCESS_MODULES.PROGRAMA] },
     { to: "/vaccinators", label: "Vacinadores", permissions: [ACCESS_MODULES.VACINADORES] },
-    { to: "/solicitacoes", label: "Solicitacoes", permissions: [ACCESS_MODULES.SOLICITACOES] },
+    { to: "/solicitacoes", label: "Notificacoes", permissions: [ACCESS_MODULES.SOLICITACOES] },
     { to: "/perfil", label: "Perfil da Granja", permissions: [ACCESS_MODULES.CONFIGURACOES] },
   ];
   const visibleLinks = links.filter((link) => canAccessAny(link.permissions));

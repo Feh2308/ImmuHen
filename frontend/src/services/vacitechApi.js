@@ -284,6 +284,18 @@ export async function sendNotificationTestApi() {
   });
 }
 
+export async function deleteNotificationApi(id) {
+  return apiRequest(`/api/vacitech/notifications/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function clearNotificationsApi() {
+  return apiRequest("/api/vacitech/notifications", {
+    method: "DELETE",
+  });
+}
+
 export async function authorizeStockAccessApi(password) {
   return apiRequest("/api/vacitech/stock-access", {
     method: "POST",

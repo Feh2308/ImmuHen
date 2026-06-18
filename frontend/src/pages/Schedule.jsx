@@ -323,6 +323,52 @@ function hasDateArrived(dateValue) {
   return String(dateValue) <= toDateInputValue(new Date());
 }
 
+function getWeekRange(date = new Date()) {
+  const start = new Date(date);
+  const day = start.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() + diff);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  return {
+    start: toDateInputValue(start),
+    end: toDateInputValue(end),
+  };
+}
+
+function matchesProgramPeriodFilter(record, filter) {
+  if (filter === "COMPLETO") {
+    return true;
+  }
+
+  const dateValue = getRecordDateValue(record);
+
+  if (!dateValue || dateValue === "9999-12-31") {
+    return false;
+  }
+
+  const today = toDateInputValue(new Date());
+
+  if (filter === "DIA") {
+    return dateValue === today;
+  }
+
+  if (filter === "SEMANA") {
+    const week = getWeekRange();
+    return dateValue >= week.start && dateValue <= week.end;
+  }
+
+  if (filter === "MES") {
+    return dateValue.slice(0, 7) === today.slice(0, 7);
+  }
+
+  return true;
+}
+
 function addWeeks(dateValue, weeks) {
   return addDays(dateValue, Number(weeks || 0) * 7);
 }
@@ -397,6 +443,7 @@ function Schedule() {
   const [editingScheduleId, setEditingScheduleId] = useState(null);
   const [editingUsages, setEditingUsages] = useState([]);
   const [transferForms, setTransferForms] = useState({});
+  const [programPeriodFilter, setProgramPeriodFilter] = useState("COMPLETO");
   const [form, setForm] = useState({
     scheduleMode: "PROGRAMA_120_DIAS",
     vaccinatorId: "",
@@ -429,10 +476,13 @@ function Schedule() {
       })
       .sort(sortVaccinationRecords)
   ), [schedules]);
+  const filteredActiveSchedules = useMemo(() => (
+    activeSchedules.filter((schedule) => matchesProgramPeriodFilter(schedule, programPeriodFilter))
+  ), [activeSchedules, programPeriodFilter]);
   const groupedActiveSchedules = useMemo(() => {
     const groups = new Map();
 
-    activeSchedules.forEach((schedule) => {
+    filteredActiveSchedules.forEach((schedule) => {
       const key = schedule.programId ||
         (schedule.birdLotId ? `lote-${schedule.birdLotId}` : `avulso-${getRecordDateValue(schedule)}`);
       const current = groups.get(key) || {
@@ -457,11 +507,11 @@ function Schedule() {
         schedules: group.schedules.sort(sortVaccinationRecords),
       }))
       .sort((first, second) => String(first.startDate || "").localeCompare(String(second.startDate || "")));
-  }, [activeSchedules]);
+  }, [filteredActiveSchedules]);
   const scheduleCalendarDays = useMemo(() => {
     const groups = new Map();
 
-    activeSchedules.forEach((schedule) => {
+    filteredActiveSchedules.forEach((schedule) => {
       const date = schedule.vaccinationStartDate || schedule.date || "sem-data";
       const current = groups.get(date) || {
         date,
@@ -475,7 +525,7 @@ function Schedule() {
 
     return Array.from(groups.values())
       .sort((first, second) => String(first.date).localeCompare(String(second.date)));
-  }, [activeSchedules]);
+  }, [filteredActiveSchedules]);
   const overdueNotifications = notifications
     .filter((notification) => notification.type === "OVERDUE_VACCINATION")
     .slice(-6)
@@ -1737,6 +1787,45 @@ function getMapsLink(location) {
           </section>
         )}
 
+        <section className="mt-6 rounded-2xl border border-green-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-zinc-900">
+                Filtrar programa
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Visualize as vacinas de hoje, da semana, do mes ou o programa completo.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: "DIA", label: "Dia" },
+                { value: "SEMANA", label: "Semana" },
+                { value: "MES", label: "Mes" },
+                { value: "COMPLETO", label: "Completo" },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setProgramPeriodFilter(option.value)}
+                  className={`rounded-xl px-4 py-2 font-bold transition ${
+                    programPeriodFilter === option.value
+                      ? "bg-green-600 text-white"
+                      : "bg-green-50 text-green-700 hover:bg-green-100"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="mt-3 text-sm font-semibold text-green-700">
+            Exibindo {filteredActiveSchedules.length} de {activeSchedules.length} vacina(s).
+          </p>
+        </section>
+
         {programTransferGroups.length > 0 && (
           <section className="mt-6 rounded-2xl border border-green-100 bg-white p-6 shadow-sm">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -2654,7 +2743,7 @@ function getMapsLink(location) {
                 </h2>
               </div>
               <span className="w-fit rounded-full bg-green-50 px-4 py-2 text-sm font-bold text-green-700">
-                {activeSchedules.length} evento(s)
+                {filteredActiveSchedules.length} evento(s)
               </span>
             </div>
 
@@ -2688,9 +2777,9 @@ function getMapsLink(location) {
         )}
 
         <section className="mt-6 grid gap-5">
-          {activeSchedules.length === 0 && (
+          {filteredActiveSchedules.length === 0 && (
             <div className="rounded-2xl border border-green-100 bg-white p-6 text-zinc-500 shadow-sm">
-              Nenhum programa registrado.
+              Nenhum programa encontrado neste filtro.
             </div>
           )}
 

@@ -107,6 +107,38 @@ function getStatus(saldo) {
   };
 }
 
+function collectVaccineIdsFromUsages(record, targetSet) {
+  [
+    record?.vaccineUsages,
+    record?.actualVaccineUsages,
+    record?.usageConfirmation,
+    record?.returnedVaccines,
+  ].forEach((items) => {
+    if (!Array.isArray(items)) {
+      return;
+    }
+
+    items.forEach((item) => {
+      if (item?.vaccineId) {
+        targetSet.add(String(item.vaccineId));
+      }
+    });
+  });
+}
+
+function formatAuditType(type) {
+  const labels = {
+    "stock-cleared": "Estoque limpo",
+    "used-doses-cleared": "Doses usadas limpas",
+    "entry-deleted": "Entrada excluida",
+    "entry-value-updated": "Valor de entrada alterado",
+    "vaccine-updated": "Vacina alterada",
+    "vaccine-deleted": "Vacina excluida",
+  };
+
+  return labels[type] || type || "Registro";
+}
+
 function Stock() {
   const stockSessionKey = getTenantSessionKey("stockAuthorized");
 
@@ -114,6 +146,8 @@ function Stock() {
     vaccines,
     entries,
     outputs,
+    vaccineAuditLog,
+    clearStock,
   } = useVaccines();
 
   const [password, setPassword] =
@@ -337,6 +371,19 @@ function Stock() {
     );
   }, [stockRows]);
 
+  const stockHistoryRows = useMemo(() => (
+    (Array.isArray(vaccineAuditLog) ? vaccineAuditLog : [])
+      .filter((item) => (
+        item.type === "stock-cleared" ||
+        item.type === "used-doses-cleared" ||
+        item.type === "entry-deleted" ||
+        item.type === "entry-value-updated" ||
+        item.type === "vaccine-deleted" ||
+        item.type === "vaccine-updated"
+      ))
+      .slice(0, 20)
+  ), [vaccineAuditLog]);
+
   async function handleStockAccess() {
     setAccessLoading(true);
     setAccessMessage("");
@@ -390,6 +437,45 @@ function Stock() {
     } catch (error) {
       alert(error.message || "Nao foi possivel registrar a devolucao.");
     }
+  }
+
+  function handleClearStock() {
+    const schedules = readJson("schedules", []);
+    const completedVaccinations = readJson("completedVaccinations", []);
+    const preserveVaccineIds = new Set();
+
+    outputs.forEach((output) => {
+      if (output.vaccineId) {
+        preserveVaccineIds.add(String(output.vaccineId));
+      }
+    });
+    requests.forEach((request) => collectVaccineIdsFromUsages(request, preserveVaccineIds));
+    schedules.forEach((schedule) => collectVaccineIdsFromUsages(schedule, preserveVaccineIds));
+    completedVaccinations.forEach((record) => collectVaccineIdsFromUsages(record, preserveVaccineIds));
+
+    const removableVaccines = vaccines.filter((vaccine) => !preserveVaccineIds.has(String(vaccine.id)));
+    const message = [
+      "Limpar o estoque atual?",
+      "",
+      `Doses em estoque que serao zeradas: ${totals.saldo}`,
+      `Entradas removidas do estoque atual: ${entries.length}`,
+      `Baixas preservadas no historico e retiradas do saldo: ${outputs.filter(isActiveOutput).length}`,
+      `Vacinas sem uso que serao removidas: ${removableVaccines.length}`,
+      "",
+      "Cadastro da granja, usuarios, vacinadores e configuracoes serao mantidos.",
+      "Digite LIMPAR ESTOQUE para confirmar.",
+    ].join("\n");
+    const confirmation = window.prompt(message);
+
+    if (confirmation !== "LIMPAR ESTOQUE") {
+      return;
+    }
+
+    clearStock({
+      preserveVaccineIds: Array.from(preserveVaccineIds),
+      reason: "Limpeza geral do estoque feita pela tela Estoque.",
+      clearedBy: "Administrador",
+    });
   }
 
   function printLotCostReport() {
@@ -523,6 +609,14 @@ function Stock() {
               className="bg-zinc-200 hover:bg-zinc-300 text-zinc-700 px-6 py-4 rounded-2xl font-bold transition"
             >
               Bloquear Estoque
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClearStock}
+              className="bg-red-50 hover:bg-red-100 text-red-700 px-6 py-4 rounded-2xl font-bold transition"
+            >
+              Limpar Estoque
             </button>
 
           </div>
@@ -905,6 +999,56 @@ function Stock() {
 
           </table>
 
+        </div>
+
+        <div className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm overflow-x-auto">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-zinc-900">
+                Historico do estoque
+              </h2>
+              <p className="mt-2 text-zinc-500">
+                Auditoria das limpezas, exclusoes e ajustes feitos no estoque.
+              </p>
+            </div>
+          </div>
+
+          <table className="mt-6 w-full text-left text-zinc-900">
+            <thead>
+              <tr className="border-b border-green-100 text-zinc-500">
+                <th className="pb-4">Acao</th>
+                <th className="pb-4">Vacina</th>
+                <th className="pb-4">Resumo</th>
+                <th className="pb-4">Responsavel</th>
+                <th className="pb-4">Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stockHistoryRows.map((item) => (
+                <tr key={item.id} className="border-b border-green-100 last:border-b-0">
+                  <td className="py-4 font-bold text-green-700">{formatAuditType(item.type)}</td>
+                  <td className="min-w-48 max-w-xs whitespace-normal break-words">
+                    {item.vaccineName || item.vacina || item.nome || "-"}
+                  </td>
+                  <td className="min-w-64 max-w-md whitespace-normal break-words text-zinc-600">
+                    {item.type === "stock-cleared"
+                      ? `Estoque anterior: ${item.stockBefore || 0}. Entradas removidas: ${item.removedEntriesCount || 0}. Baixas limpas: ${item.clearedOutputsCount || 0}. Vacinas sem uso removidas: ${item.removedVaccinesCount || 0}.`
+                      : item.reason || item.observacao || "-"}
+                  </td>
+                  <td>{item.clearedBy || item.approvedBy || item.requestedBy || "Sistema"}</td>
+                  <td>{item.createdAt || item.approvedAt || "-"}</td>
+                </tr>
+              ))}
+
+              {stockHistoryRows.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="py-6 text-zinc-500">
+                    Nenhuma acao de estoque registrada no historico.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
       </div>

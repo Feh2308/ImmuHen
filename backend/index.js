@@ -974,6 +974,37 @@ app.get("/api/vacitech/notifications/status", async (req, res) => {
   });
 });
 
+app.delete("/api/vacitech/notifications/:id", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const notificationId = String(req.params.id || "");
+
+  tenantData.notifications = tenantData.notifications.filter((notification) => (
+    String(notification.id || "") !== notificationId
+  ));
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    success: true,
+    notifications: tenantData.notifications,
+  });
+});
+
+app.delete("/api/vacitech/notifications", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+
+  tenantData.notifications = [];
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    success: true,
+    notifications: tenantData.notifications,
+  });
+});
+
 app.post("/api/vacitech/stock-access", async (req, res) => {
   const password = String(req.body.password || "").trim();
 
