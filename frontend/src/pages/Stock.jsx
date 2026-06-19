@@ -15,6 +15,7 @@ import {
   readJson,
   writeJson,
 } from "../utils/vacitechStorage";
+import { matchesSearchQuery } from "../utils/search";
 import { compareVaccinesByCode, sortVaccinesByCode } from "../utils/vaccineSort";
 
 function formatCurrency(value) {
@@ -144,6 +145,8 @@ function Stock() {
     useState(() => sessionStorage.getItem(stockSessionKey) === "true");
   const [requests, setRequests] =
     useState(() => readJson("requests", []));
+  const [stockSearch, setStockSearch] =
+    useState("");
   const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
 
   useEffect(() => {
@@ -287,21 +290,6 @@ function Stock() {
       .sort((first, second) => String(second.date || "").localeCompare(String(first.date || "")))
   ), [requests]);
 
-  const pendingStockTotals = useMemo(() => (
-    pendingStockRows.reduce(
-      (total, row) => ({
-        levadas: total.levadas + row.quantityTaken,
-        usadas: total.usadas + row.quantityUsed,
-        sobrando: total.sobrando + row.quantityReturned,
-      }),
-      {
-        levadas: 0,
-        usadas: 0,
-        sobrando: 0,
-      }
-    )
-  ), [pendingStockRows]);
-
   const lotCostRows = useMemo(() => {
     const rows = new Map();
 
@@ -364,6 +352,45 @@ function Stock() {
       ))
       .slice(0, 20)
   ), [vaccineAuditLog]);
+  const filteredPendingStockRows = useMemo(() => (
+    pendingStockRows.filter((row) => matchesSearchQuery(row, stockSearch))
+  ), [pendingStockRows, stockSearch]);
+  const filteredPendingStockTotals = useMemo(() => (
+    filteredPendingStockRows.reduce(
+      (total, row) => ({
+        levadas: total.levadas + row.quantityTaken,
+        usadas: total.usadas + row.quantityUsed,
+        sobrando: total.sobrando + row.quantityReturned,
+      }),
+      {
+        levadas: 0,
+        usadas: 0,
+        sobrando: 0,
+      }
+    )
+  ), [filteredPendingStockRows]);
+  const filteredStockRows = useMemo(() => (
+    stockRows.filter((row) => matchesSearchQuery(row, stockSearch, [
+      getStatus(row.saldo).label,
+      formatCurrency(row.valorTotal),
+    ]))
+  ), [stockRows, stockSearch]);
+  const filteredMovementRows = useMemo(() => (
+    movementRows.filter((row) => matchesSearchQuery(row, stockSearch))
+  ), [movementRows, stockSearch]);
+  const filteredLotCostRows = useMemo(() => (
+    lotCostRows.filter((row) => matchesSearchQuery(row, stockSearch, [
+      formatCurrency(row.custo),
+    ]))
+  ), [lotCostRows, stockSearch]);
+  const filteredStockHistoryRows = useMemo(() => (
+    stockHistoryRows.filter((item) => matchesSearchQuery(item, stockSearch, [
+      formatAuditType(item.type),
+      item.vaccineName || item.vacina || item.nome,
+      item.reason || item.observacao,
+      item.createdAt || item.approvedAt,
+    ]))
+  ), [stockHistoryRows, stockSearch]);
 
   async function handleStockAccess() {
     setAccessLoading(true);
@@ -631,6 +658,31 @@ function Stock() {
 
         </div>
 
+        <div className="mt-8 rounded-3xl border border-green-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-zinc-900">
+                Buscar no estoque
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                Procure por vacina, codigo, lote, fornecedor, status, data, responsavel ou historico.
+              </p>
+            </div>
+
+            <input
+              type="search"
+              value={stockSearch}
+              onChange={(event) => setStockSearch(event.target.value)}
+              placeholder="Buscar qualquer referencia do estoque"
+              className="w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white md:max-w-xl"
+            />
+          </div>
+
+          <p className="mt-3 text-sm font-bold text-green-700">
+            {filteredStockRows.length} saldo(s), {filteredMovementRows.length} movimentacao(oes), {filteredStockHistoryRows.length} historico(s).
+          </p>
+        </div>
+
         <div className="mt-8 bg-white rounded-3xl border border-purple-100 p-8 shadow-sm overflow-x-auto">
           <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
@@ -644,13 +696,13 @@ function Stock() {
 
             <div className="flex flex-wrap gap-2">
               <span className="rounded-full bg-purple-50 px-4 py-2 text-sm font-bold text-purple-700">
-                Levadas: {pendingStockTotals.levadas}
+                Levadas: {filteredPendingStockTotals.levadas}
               </span>
               <span className="rounded-full bg-green-50 px-4 py-2 text-sm font-bold text-green-700">
-                Usadas informadas: {pendingStockTotals.usadas}
+                Usadas informadas: {filteredPendingStockTotals.usadas}
               </span>
               <span className="rounded-full bg-zinc-50 px-4 py-2 text-sm font-bold text-zinc-700">
-                Sobras: {pendingStockTotals.sobrando}
+                Sobras: {filteredPendingStockTotals.sobrando}
               </span>
             </div>
           </div>
@@ -668,7 +720,7 @@ function Stock() {
               </tr>
             </thead>
             <tbody>
-              {pendingStockRows.map((row) => (
+              {filteredPendingStockRows.map((row) => (
                 <tr key={row.id} className="border-b border-purple-100 last:border-b-0">
                   <td className="py-4 font-bold">{row.vacina}</td>
                   <td className="min-w-56 max-w-md whitespace-normal break-words">
@@ -694,6 +746,14 @@ function Stock() {
                 <tr>
                   <td colSpan="7" className="py-6 text-zinc-500">
                     Nenhuma dose aguardando conferencia do administrador.
+                  </td>
+                </tr>
+              )}
+
+              {pendingStockRows.length > 0 && filteredPendingStockRows.length === 0 && (
+                <tr>
+                  <td colSpan="7" className="py-6 text-zinc-500">
+                    Nenhuma dose aguardando conferencia encontrada para a busca.
                   </td>
                 </tr>
               )}
@@ -731,7 +791,7 @@ function Stock() {
               </tr>
             </thead>
             <tbody>
-              {lotCostRows.map((row) => (
+              {filteredLotCostRows.map((row) => (
                 <tr key={row.id} className="border-b border-green-100 last:border-b-0">
                   <td className="py-4 font-bold">{row.lote}</td>
                   <td className="min-w-56 max-w-md whitespace-normal break-words">{row.vacinas}</td>
@@ -744,6 +804,14 @@ function Stock() {
                 <tr>
                   <td colSpan="4" className="py-6 text-zinc-500">
                     Nenhuma baixa vinculada a lote ainda.
+                  </td>
+                </tr>
+              )}
+
+              {lotCostRows.length > 0 && filteredLotCostRows.length === 0 && (
+                <tr>
+                  <td colSpan="4" className="py-6 text-zinc-500">
+                    Nenhum custo por lote encontrado para a busca.
                   </td>
                 </tr>
               )}
@@ -801,7 +869,7 @@ function Stock() {
 
             <tbody>
 
-              {stockRows.map((row) => {
+              {filteredStockRows.map((row) => {
                 const status = getStatus(row.saldo);
 
                 return (
@@ -860,6 +928,16 @@ function Stock() {
 
               )}
 
+              {stockRows.length > 0 && filteredStockRows.length === 0 && (
+
+                <tr>
+                  <td colSpan="8" className="py-6 text-zinc-500">
+                    Nenhum saldo encontrado para a busca.
+                  </td>
+                </tr>
+
+              )}
+
             </tbody>
 
           </table>
@@ -912,7 +990,7 @@ function Stock() {
 
             <tbody>
 
-              {movementRows.map((row) => (
+              {filteredMovementRows.map((row) => (
 
                 <tr
                   key={row.id}
@@ -962,6 +1040,16 @@ function Stock() {
 
               )}
 
+              {movementRows.length > 0 && filteredMovementRows.length === 0 && (
+
+                <tr>
+                  <td colSpan="7" className="py-6 text-zinc-500">
+                    Nenhuma movimentacao encontrada para a busca.
+                  </td>
+                </tr>
+
+              )}
+
             </tbody>
 
           </table>
@@ -991,7 +1079,7 @@ function Stock() {
               </tr>
             </thead>
             <tbody>
-              {stockHistoryRows.map((item) => (
+              {filteredStockHistoryRows.map((item) => (
                 <tr key={item.id} className="border-b border-green-100 last:border-b-0">
                   <td className="py-4 font-bold text-green-700">{formatAuditType(item.type)}</td>
                   <td className="min-w-48 max-w-xs whitespace-normal break-words">
@@ -1011,6 +1099,14 @@ function Stock() {
                 <tr>
                   <td colSpan="5" className="py-6 text-zinc-500">
                     Nenhuma acao de estoque registrada no historico.
+                  </td>
+                </tr>
+              )}
+
+              {stockHistoryRows.length > 0 && filteredStockHistoryRows.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="py-6 text-zinc-500">
+                    Nenhum historico encontrado para a busca.
                   </td>
                 </tr>
               )}

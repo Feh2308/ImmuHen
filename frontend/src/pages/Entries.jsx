@@ -5,6 +5,7 @@ import Sidebar from "../components/Sidebar";
 import {
   useVaccines,
 } from "../context/VaccineContext";
+import { matchesSearchQuery } from "../utils/search";
 import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 function parseMoney(value) {
@@ -120,6 +121,9 @@ function Entries() {
   const [clearVaccineId, setClearVaccineId] =
     useState("");
 
+  const [entrySearch, setEntrySearch] =
+    useState("");
+
   const selectedVaccine = useMemo(() => (
     vaccines.find((vaccine) => String(vaccine.id) === String(vaccineId))
   ), [vaccineId, vaccines]);
@@ -159,6 +163,19 @@ function Entries() {
   const selectedAlertLevel = vaccineId
     ? getStockAlertLevel(vaccineId)
     : 0;
+  const filteredEntries = useMemo(() => (
+    entries.filter((entry) => matchesSearchQuery(entry, entrySearch, [
+      entry.vacina,
+      entry.lote,
+      entry.validade,
+      entry.fornecedor,
+      entry.observacao,
+      formatCurrency(getEntryDoseValue(entry)),
+      formatCurrency(getEntryTotalValue(entry)),
+      getEntryDoseValue(entry),
+      getEntryTotalValue(entry),
+    ]))
+  ), [entries, entrySearch]);
 
   useEffect(() => {
     if (!selectedVaccine) {
@@ -689,11 +706,21 @@ function Entries() {
               </p>
             </div>
 
-            {entryValueMessage && (
-              <p className="rounded-2xl border border-green-100 bg-green-50 px-5 py-3 text-sm font-bold text-green-700">
-                {entryValueMessage}
-              </p>
-            )}
+            <div className="flex w-full flex-col gap-3 md:max-w-xl">
+              <input
+                type="search"
+                value={entrySearch}
+                onChange={(event) => setEntrySearch(event.target.value)}
+                placeholder="Buscar por vacina, lote, validade, fornecedor, valor ou observacao"
+                className="w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white"
+              />
+
+              {entryValueMessage && (
+                <p className="rounded-2xl border border-green-100 bg-green-50 px-5 py-3 text-sm font-bold text-green-700">
+                  {entryValueMessage}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="mt-6 overflow-x-auto">
@@ -716,7 +743,7 @@ function Entries() {
               </thead>
 
               <tbody>
-                {entries.map((entry) => {
+                {filteredEntries.map((entry) => {
                   const pendingRequest = getPendingEntryValueRequest(entry.id);
                   const editingThisEntry = String(editingValueEntryId) === String(entry.id);
 
@@ -842,6 +869,12 @@ function Entries() {
             {entries.length === 0 && (
               <p className="mt-4 rounded-2xl bg-green-50 p-5 text-center text-zinc-500">
                 Nenhuma entrada registrada.
+              </p>
+            )}
+
+            {entries.length > 0 && filteredEntries.length === 0 && (
+              <p className="mt-4 rounded-2xl bg-green-50 p-5 text-center text-zinc-500">
+                Nenhuma entrada encontrada para a busca informada.
               </p>
             )}
           </div>

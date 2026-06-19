@@ -12,6 +12,7 @@ import {
   normalizeRequestStatus,
   readJson,
 } from "../utils/vacitechStorage";
+import { matchesSearchQuery } from "../utils/search";
 
 const emptyForm = {
   linhagem: "",
@@ -84,10 +85,46 @@ function Aves() {
     loadLots();
   }, []);
 
+  function getLotSearchValues(lot) {
+    const lotSchedules = schedules.filter((schedule) => String(schedule.birdLotId || "") === String(lot.id));
+
+    return [
+      lot.id,
+      lot.linhagem,
+      lot.ranchoAtual,
+      lot.avesAlojadas,
+      lot.dataAlojamento,
+      formatDate(lot.dataAlojamento),
+      lot.idadeAtual,
+      lot.status,
+      lot.observacoes,
+      ...lotSchedules.flatMap((schedule) => [
+        schedule.programId,
+        schedule.programDay ? `dia ${schedule.programDay}` : "",
+        schedule.programSuggestedName,
+        schedule.birdLotName,
+        schedule.vaccinatorName,
+        schedule.vaccinationStartDate,
+        formatDate(schedule.vaccinationStartDate || schedule.date),
+        normalizeRequestStatus(schedule.status),
+        ...(schedule.vaccineUsages || []).flatMap((usage) => [
+          usage.vacina,
+          usage.fabricante,
+          usage.applicationMethod,
+          usage.doses,
+        ]),
+      ]),
+    ];
+  }
+
+  const filteredLots = useMemo(() => (
+    lots.filter((lot) => matchesSearchQuery(lot, lotSearch, getLotSearchValues(lot)))
+  ), [lotSearch, lots, schedules]);
+
   const monthlyLots = useMemo(() => {
     const normalizedRanchFilter = ranchFilter.trim().toLowerCase();
 
-    return lots
+    return filteredLots
       .filter((lot) => lot.dataAlojamento?.startsWith(selectedMonth))
       .filter((lot) => {
         if (!normalizedRanchFilter) {
@@ -99,7 +136,7 @@ function Aves() {
           .includes(normalizedRanchFilter);
       })
       .sort((a, b) => Number(a.idadeAtual) - Number(b.idadeAtual));
-  }, [lots, selectedMonth, ranchFilter]);
+  }, [filteredLots, selectedMonth, ranchFilter]);
 
   const monthlyTotal = useMemo(() => {
     return monthlyLots.reduce(
@@ -109,20 +146,18 @@ function Aves() {
   }, [monthlyLots]);
 
   const recentLots = useMemo(() => (
-    [...lots]
+    [...filteredLots]
       .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
       .slice(0, 6)
-  ), [lots]);
+  ), [filteredLots]);
 
   const searchedLots = useMemo(() => {
-    const term = lotSearch.trim().toLowerCase();
-
-    if (!term) {
+    if (!lotSearch.trim()) {
       return [];
     }
 
-    return lots.filter((lot) => String(lot.id || "").toLowerCase().includes(term));
-  }, [lotSearch, lots]);
+    return filteredLots;
+  }, [filteredLots, lotSearch]);
 
   function getLotVaccinations(lotId) {
     return schedules
@@ -340,16 +375,24 @@ function Aves() {
         <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-[1.1fr_0.9fr]">
           <section className="rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
             <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-              <div>
-                <h2 className="text-3xl font-bold text-zinc-900">
-                  Todos os registrados
-                </h2>
+            <div>
+              <h2 className="text-3xl font-bold text-zinc-900">
+                Todos os registrados
+              </h2>
 
-                <p className="mt-2 text-zinc-500">
-                  {lots.length} registro(s) de aves cadastrados.
-                </p>
-              </div>
+              <p className="mt-2 text-zinc-500">
+                  {filteredLots.length} de {lots.length} registro(s) de aves cadastrados.
+              </p>
             </div>
+
+            <input
+              type="search"
+              value={lotSearch}
+              onChange={(event) => setLotSearch(event.target.value)}
+              placeholder="Buscar por ID, rancho, linhagem, data, status ou vacina"
+              className="w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white md:max-w-sm"
+            />
+          </div>
 
             <div className="mt-6 overflow-x-auto">
               <table className="w-full text-left text-zinc-900">
@@ -365,7 +408,7 @@ function Aves() {
                 </thead>
 
                 <tbody>
-                  {lots.map((lot) => (
+                  {filteredLots.map((lot) => (
                     <tr key={lot.id} className="border-b border-green-100 last:border-b-0">
                       <td className="py-4 font-bold text-green-700">{lot.id}</td>
                       <td>{lot.ranchoAtual || "Pinteiro"}</td>
@@ -377,6 +420,12 @@ function Aves() {
                   ))}
                 </tbody>
               </table>
+
+              {lots.length > 0 && filteredLots.length === 0 && (
+                <p className="mt-4 rounded-2xl bg-green-50 p-5 text-zinc-500">
+                  Nenhum registro encontrado para a busca informada.
+                </p>
+              )}
             </div>
           </section>
 
@@ -414,7 +463,7 @@ function Aves() {
               </h2>
 
               <p className="mt-2 text-zinc-500">
-                Pesquise o ID para ver se existe vacina acontecendo naquele lote e em qual data.
+                Pesquise por ID, rancho, linhagem, vacina, status ou data para ver o lote e as vacinas vinculadas.
               </p>
             </div>
 
@@ -422,7 +471,7 @@ function Aves() {
               type="text"
               value={lotSearch}
               onChange={(event) => setLotSearch(event.target.value)}
-              placeholder="Pesquisar ID do lote"
+              placeholder="Pesquisar lote, rancho, vacina ou data"
               className="w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none xl:max-w-sm"
             />
           </div>
@@ -430,7 +479,7 @@ function Aves() {
           <div className="mt-6 grid gap-4">
             {lotSearch.trim() && searchedLots.length === 0 && (
               <p className="rounded-2xl bg-green-50 p-5 text-zinc-500">
-                Nenhum lote encontrado com esse ID.
+                Nenhum lote encontrado para a busca informada.
               </p>
             )}
 

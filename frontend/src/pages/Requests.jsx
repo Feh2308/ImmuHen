@@ -18,6 +18,7 @@ import {
   sendRequestMessageApi,
 } from "../services/vacitechApi";
 import { useVaccines } from "../context/VaccineContext";
+import { matchesSearchQuery } from "../utils/search";
 import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 function parseQuantity(value) {
@@ -217,6 +218,7 @@ function Requests() {
   const [notifications, setNotifications] = useState(() => readJson("vaccinatorNotifications", []));
   const [completedVaccinations, setCompletedVaccinations] = useState(() => readJson("completedVaccinations", []));
   const [statusFilter, setStatusFilter] = useState("TODAS");
+  const [requestSearch, setRequestSearch] = useState("");
   const [doseConfirmationForms, setDoseConfirmationForms] = useState({});
   const [completionForms, setCompletionForms] = useState({});
   const [messageDrafts, setMessageDrafts] = useState({});
@@ -313,6 +315,18 @@ function Requests() {
   }, [activeRequests]);
 
   const filteredRequests = activeRequests.filter((request) => {
+    const matchesSearch = matchesSearchQuery(request, requestSearch, [
+      getRecordSummary(request),
+      normalizeRequestStatus(request.status),
+      getRequestTotalDoses(request),
+      getRecordDateValue(request),
+      getCompletionDate(request).toLocaleDateString("pt-BR"),
+    ]);
+
+    if (!matchesSearch) {
+      return false;
+    }
+
     if (statusFilter === "TODAS") {
       return true;
     }
@@ -338,6 +352,10 @@ function Requests() {
       notification.type === "OVERDUE_VACCINATION" ||
       notification.type === "LOW_STOCK"
     ))
+    .filter((notification) => matchesSearchQuery(notification, requestSearch, [
+      getNotificationLabel(notification.type),
+      notification.createdAt,
+    ]))
     .slice(-8)
     .reverse();
 
@@ -346,6 +364,13 @@ function Requests() {
       .sort((first, second) => getCompletionDate(second).getTime() - getCompletionDate(first).getTime())
       .slice(0, 12);
   }, [completedVaccinations]);
+  const filteredCompletedHistory = useMemo(() => (
+    completedHistory.filter((record) => matchesSearchQuery(record, requestSearch, [
+      getRecordSummary(record),
+      getCompletionDate(record).toLocaleDateString("pt-BR"),
+      normalizeRequestStatus(record.status),
+    ]))
+  ), [completedHistory, requestSearch]);
 
   function getNotificationLabel(type) {
     if (type === "TEMPERATURE_PHOTO") {
@@ -821,6 +846,18 @@ function Requests() {
               </button>
             ))}
           </div>
+
+          <input
+            type="search"
+            value={requestSearch}
+            onChange={(event) => setRequestSearch(event.target.value)}
+            placeholder="Buscar por granja, vacinador, lote, vacina, status, data, mensagem ou observacao"
+            className="mt-4 w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white"
+          />
+
+          <p className="mt-3 text-sm font-bold text-green-700">
+            {filteredRequests.length} notificacao(oes) encontrada(s).
+          </p>
         </section>
 
         <section className="mt-6 rounded-2xl border border-green-100 bg-white p-6 shadow-sm">
@@ -1330,7 +1367,7 @@ function Requests() {
             </div>
 
             <span className="w-fit rounded-full bg-green-50 px-4 py-2 text-sm font-bold text-green-700">
-              {completedVaccinations.length} salvo(s)
+              {filteredCompletedHistory.length} de {completedVaccinations.length} salvo(s)
             </span>
           </div>
 
@@ -1341,7 +1378,13 @@ function Requests() {
               </p>
             )}
 
-            {completedHistory.map((record) => {
+            {completedHistory.length > 0 && filteredCompletedHistory.length === 0 && (
+              <p className="text-zinc-500">
+                Nenhum historico encontrado para a busca informada.
+              </p>
+            )}
+
+            {filteredCompletedHistory.map((record) => {
               const materials = getRecordMaterials(record);
 
               return (

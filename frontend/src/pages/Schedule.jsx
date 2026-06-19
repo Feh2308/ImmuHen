@@ -19,6 +19,7 @@ import {
   updateRequestVaccinesApi,
 } from "../services/vacitechApi";
 import { useVaccines } from "../context/VaccineContext";
+import { matchesSearchQuery } from "../utils/search";
 import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 const WEEKDAYS = [
@@ -444,6 +445,7 @@ function Schedule() {
   const [editingUsages, setEditingUsages] = useState([]);
   const [transferForms, setTransferForms] = useState({});
   const [programPeriodFilter, setProgramPeriodFilter] = useState("COMPLETO");
+  const [programSearch, setProgramSearch] = useState("");
   const [form, setForm] = useState({
     scheduleMode: "PROGRAMA_120_DIAS",
     vaccinatorId: "",
@@ -476,9 +478,48 @@ function Schedule() {
       })
       .sort(sortVaccinationRecords)
   ), [schedules]);
+  function getScheduleSearchValues(schedule) {
+    return [
+      schedule.id,
+      schedule.programId,
+      schedule.programDay ? `dia ${schedule.programDay}` : "",
+      schedule.programSuggestedName,
+      schedule.farmName,
+      schedule.birdLotName,
+      schedule.birdLotId,
+      schedule.vaccinatorName,
+      schedule.vaccinatorEmail,
+      schedule.vaccinatorPhone,
+      schedule.vaccinatorNotificationContact,
+      schedule.applicationMethod,
+      schedule.hasDebicagem === "SIM" ? "debicagem sim" : "debicagem nao",
+      schedule.vaccinationStartDate,
+      schedule.vaccinationEndDate,
+      schedule.programStartDate,
+      schedule.programEndDate,
+      formatDate(schedule.vaccinationStartDate || schedule.date),
+      getVaccinationPeriod(schedule),
+      normalizeRequestStatus(schedule.status),
+      formatCurrency(getLaborCost(schedule)),
+      formatCurrency(getScheduleTotalCost(schedule)),
+      ...(schedule.vaccineUsages || []).flatMap((usage) => [
+        usage.vacina,
+        usage.fabricante,
+        usage.applicationMethod,
+        usage.doses,
+        getUsageFlaskCc(usage),
+        getUsageDosePerBirdCc(usage),
+        getUsageBirdsVaccinated(usage),
+        getUsageRequiredFlasks(usage),
+        getUsageBirdsPerFlask(usage),
+      ]),
+    ];
+  }
   const filteredActiveSchedules = useMemo(() => (
-    activeSchedules.filter((schedule) => matchesProgramPeriodFilter(schedule, programPeriodFilter))
-  ), [activeSchedules, programPeriodFilter]);
+    activeSchedules
+      .filter((schedule) => matchesProgramPeriodFilter(schedule, programPeriodFilter))
+      .filter((schedule) => matchesSearchQuery(schedule, programSearch, getScheduleSearchValues(schedule)))
+  ), [activeSchedules, programPeriodFilter, programSearch]);
   const groupedActiveSchedules = useMemo(() => {
     const groups = new Map();
 
@@ -1825,6 +1866,14 @@ function getMapsLink(location) {
               ))}
             </div>
           </div>
+
+          <input
+            type="search"
+            value={programSearch}
+            onChange={(event) => setProgramSearch(event.target.value)}
+            placeholder="Buscar por vacina, lote, vacinador, dia, data, status, via ou debicagem"
+            className="mt-4 w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white"
+          />
 
           <p className="mt-3 text-sm font-semibold text-green-700">
             Exibindo {filteredActiveSchedules.length} de {activeSchedules.length} vacina(s).

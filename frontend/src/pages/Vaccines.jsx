@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import Sidebar from "../components/Sidebar";
 
 import {
   useVaccines,
 } from "../context/VaccineContext";
+import { matchesSearchQuery } from "../utils/search";
 import { sortVaccinesByCode } from "../utils/vaccineSort";
 
 function Vaccines() {
@@ -28,7 +29,18 @@ function Vaccines() {
 
   const [observacoes, setObservacoes] =
     useState("");
-  const sortedVaccines = sortVaccinesByCode(vaccines);
+  const [vaccineSearch, setVaccineSearch] =
+    useState("");
+  const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
+  const filteredVaccines = useMemo(() => (
+    sortedVaccines.filter((vacina) => matchesSearchQuery(vacina, vaccineSearch, [
+      vacina.codigo,
+      vacina.nome,
+      vacina.fabricante,
+      vacina.dosesPerBottle,
+      vacina.observacoes,
+    ]))
+  ), [sortedVaccines, vaccineSearch]);
 
   function cadastrarVacina() {
 
@@ -143,6 +155,24 @@ function Vaccines() {
         </div>
 
         <div className="mt-8 bg-white rounded-3xl border border-green-100 p-8 shadow-sm overflow-x-auto">
+          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-zinc-900">
+                Vacinas cadastradas
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                {filteredVaccines.length} de {sortedVaccines.length} vacina(s) encontradas.
+              </p>
+            </div>
+
+            <input
+              type="search"
+              value={vaccineSearch}
+              onChange={(event) => setVaccineSearch(event.target.value)}
+              placeholder="Buscar por codigo, nome, fabricante, doses ou observacao"
+              className="w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white md:max-w-md"
+            />
+          </div>
 
           <table className="w-full text-left text-zinc-900">
 
@@ -176,7 +206,7 @@ function Vaccines() {
 
             <tbody>
 
-              {sortedVaccines.map((vacina) => (
+              {filteredVaccines.map((vacina) => (
 
                 <tr
                   key={vacina.id}
@@ -210,6 +240,12 @@ function Vaccines() {
             </tbody>
 
           </table>
+
+          {sortedVaccines.length > 0 && filteredVaccines.length === 0 && (
+            <p className="mt-4 rounded-2xl bg-green-50 p-5 text-center text-zinc-500">
+              Nenhuma vacina encontrada para a busca informada.
+            </p>
+          )}
 
         </div>
 

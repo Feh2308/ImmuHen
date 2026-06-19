@@ -15,6 +15,7 @@ import {
   sendVaccinatorNotificationTestApi,
   updateVaccinatorApi,
 } from "../services/vacitechApi";
+import { matchesSearchQuery } from "../utils/search";
 
 function getStoredVaccinators() {
   return readJson("vaccinators", []);
@@ -77,6 +78,7 @@ function Vaccinators() {
   const [copiedLink, setCopiedLink] = useState(false);
   const [notificationTestMessages, setNotificationTestMessages] = useState({});
   const [notificationTestLoadingId, setNotificationTestLoadingId] = useState("");
+  const [vaccinatorSearch, setVaccinatorSearch] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -91,6 +93,15 @@ function Vaccinators() {
     notificationContact: "",
   });
   const vaccinatorAppUrl = useMemo(getVaccinatorAppUrl, []);
+  const filteredVaccinators = useMemo(() => (
+    vaccinators.filter((vaccinator) => matchesSearchQuery(vaccinator, vaccinatorSearch, [
+      vaccinator.name,
+      vaccinator.email,
+      vaccinator.phone,
+      vaccinator.notificationContact,
+      vaccinator.status,
+    ]))
+  ), [vaccinators, vaccinatorSearch]);
 
   useEffect(() => {
     async function loadVaccinators() {
@@ -510,6 +521,27 @@ function Vaccinators() {
           </button>
         </section>
 
+        <section className="mt-6 rounded-2xl border border-green-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-zinc-900">
+                Buscar vacinador
+              </h2>
+              <p className="mt-1 text-sm text-zinc-500">
+                {filteredVaccinators.length} de {vaccinators.length} vacinador(es) encontrado(s).
+              </p>
+            </div>
+
+            <input
+              type="search"
+              value={vaccinatorSearch}
+              onChange={(event) => setVaccinatorSearch(event.target.value)}
+              placeholder="Buscar por nome, email, telefone, status ou notificacao"
+              className="w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white md:max-w-lg"
+            />
+          </div>
+        </section>
+
         <section className="mt-6 grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
           {vaccinators.length === 0 && (
             <div className="rounded-2xl border border-green-100 bg-white p-6 text-zinc-500 shadow-sm lg:col-span-2 xl:col-span-3">
@@ -517,7 +549,13 @@ function Vaccinators() {
             </div>
           )}
 
-          {vaccinators.map((vaccinator) => (
+          {vaccinators.length > 0 && filteredVaccinators.length === 0 && (
+            <div className="rounded-2xl border border-green-100 bg-white p-6 text-zinc-500 shadow-sm lg:col-span-2 xl:col-span-3">
+              Nenhum vacinador encontrado para a busca informada.
+            </div>
+          )}
+
+          {filteredVaccinators.map((vaccinator) => (
             <article
               key={vaccinator.id}
               className="rounded-2xl border border-green-100 bg-white p-6 shadow-sm"
