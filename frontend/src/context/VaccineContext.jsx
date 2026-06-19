@@ -103,7 +103,15 @@ export function VaccineProvider({
       };
     }
 
-    fetchSharedStateApi()
+    fetchSharedStateApi([
+      "vaccines",
+      "entries",
+      "outputs",
+      "stockAlertLevels",
+      "vaccineEditRequests",
+      "entryEditRequests",
+      "vaccineAuditLog",
+    ])
       .then((state) => {
         if (!active) {
           return;

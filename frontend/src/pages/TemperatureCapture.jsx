@@ -115,7 +115,7 @@ function TemperatureCapture() {
       return;
     }
 
-    const maxSize = 1600;
+    const maxSize = 900;
     const scale = Math.min(1, maxSize / Math.max(video.videoWidth, video.videoHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
@@ -125,7 +125,7 @@ function TemperatureCapture() {
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const capturedAt = new Date().toISOString();
-    setPhoto(canvas.toDataURL("image/jpeg", 0.82));
+    setPhoto(canvas.toDataURL("image/jpeg", 0.58));
     setPhotoName(`temperatura-vacina-${Date.now()}.jpg`);
     setPhotoCapturedAt(capturedAt);
     setMessage("");

@@ -630,7 +630,12 @@ function Schedule() {
   useEffect(() => {
     async function loadSharedData() {
       try {
-        const state = await fetchSharedStateApi();
+        const state = await fetchSharedStateApi([
+          "schedules",
+          "vaccinators",
+          "notifications",
+          "requests",
+        ]);
 
         setSchedules(state.schedules || []);
         setVaccinators(state.vaccinators || []);

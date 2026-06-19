@@ -17,6 +17,8 @@ export const API_BASE_URL = (
 ).replace(/\/$/, "");
 
 export const PAYMENTS_ENABLED = import.meta.env.VITE_ENABLE_PAYMENTS === "true";
+const sharedStateCache = new Map();
+const SHARED_STATE_CACHE_TTL_MS = 12000;
 
 function getAuthToken() {
   return localStorage.getItem("token") || "";
@@ -125,8 +127,28 @@ export async function createSubscriptionPixApi(months = 1, email = "") {
   });
 }
 
-export async function fetchSharedStateApi() {
-  return apiRequest("/api/vacitech/state");
+export async function fetchSharedStateApi(fields = [], options = {}) {
+  const normalizedFields = Array.isArray(fields)
+    ? fields.filter(Boolean)
+    : [];
+  const cacheKey = normalizedFields.join(",");
+  const cached = sharedStateCache.get(cacheKey);
+
+  if (!options.force && cached && Date.now() - cached.createdAt < SHARED_STATE_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const query = normalizedFields.length
+    ? `?fields=${encodeURIComponent(normalizedFields.join(","))}`
+    : "";
+  const data = await apiRequest(`/api/vacitech/state${query}`);
+
+  sharedStateCache.set(cacheKey, {
+    createdAt: Date.now(),
+    data,
+  });
+
+  return data;
 }
 
 export async function saveInventoryStateApi(inventoryState) {

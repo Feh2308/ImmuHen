@@ -7,7 +7,7 @@ import {
 } from "../context/VaccineContext";
 import {
   authorizeStockAccessApi,
-  fetchSharedStateApi,
+  fetchRequestsApi,
   reviewVaccinationCompletionApi,
 } from "../services/vacitechApi";
 import {
@@ -151,14 +151,14 @@ function Stock() {
 
     async function loadRequests() {
       try {
-        const state = await fetchSharedStateApi();
+        const apiRequests = await fetchRequestsApi();
 
         if (!active) {
           return;
         }
 
-        setRequests(state.requests || []);
-        writeJson("requests", state.requests || [], { silent: true });
+        setRequests(apiRequests || []);
+        writeJson("requests", apiRequests || [], { silent: true });
       } catch (error) {
         console.log(error);
         setRequests(readJson("requests", []));

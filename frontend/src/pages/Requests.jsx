@@ -223,17 +223,34 @@ function Requests() {
   const captureUrl = `${window.location.origin}/temperatura-vacina`;
   const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
 
-  async function loadRequests() {
+  async function loadRequests({ includeInventory = false, force = false } = {}) {
     try {
+      const stateFields = includeInventory
+        ? [
+            "notifications",
+            "completedVaccinations",
+            "vaccines",
+            "entries",
+            "outputs",
+            "stockAlertLevels",
+            "vaccineEditRequests",
+            "entryEditRequests",
+            "vaccineAuditLog",
+          ]
+        : ["notifications", "completedVaccinations"];
       const [apiRequests, state] = await Promise.all([
         fetchRequestsApi(),
-        fetchSharedStateApi(),
+        fetchSharedStateApi(stateFields, { force }),
       ]);
 
       setRequests(apiRequests);
       setNotifications(state.notifications || []);
       setCompletedVaccinations(state.completedVaccinations || []);
-      hydrateInventoryState(state);
+
+      if (includeInventory) {
+        hydrateInventoryState(state);
+      }
+
       writeJson("requests", apiRequests, { silent: true });
       writeJson("vaccinatorNotifications", state.notifications || [], { silent: true });
       writeJson("completedVaccinations", state.completedVaccinations || [], { silent: true });
@@ -246,16 +263,24 @@ function Requests() {
   }
 
   useEffect(() => {
-    loadRequests();
-    const refreshInterval = window.setInterval(loadRequests, 5000);
+    loadRequests({ includeInventory: true, force: true });
 
-    window.addEventListener("storage", loadRequests);
-    window.addEventListener("vacitech-storage", loadRequests);
+    const refreshInterval = window.setInterval(() => {
+      if (!document.hidden) {
+        loadRequests({ force: true });
+      }
+    }, 30000);
+    const refreshOnFocus = () => loadRequests({ force: true });
+
+    window.addEventListener("focus", refreshOnFocus);
+    window.addEventListener("storage", refreshOnFocus);
+    window.addEventListener("vacitech-storage", refreshOnFocus);
 
     return () => {
       window.clearInterval(refreshInterval);
-      window.removeEventListener("storage", loadRequests);
-      window.removeEventListener("vacitech-storage", loadRequests);
+      window.removeEventListener("focus", refreshOnFocus);
+      window.removeEventListener("storage", refreshOnFocus);
+      window.removeEventListener("vacitech-storage", refreshOnFocus);
     };
   }, []);
 
@@ -725,7 +750,7 @@ function Requests() {
 
             <button
               type="button"
-              onClick={loadRequests}
+              onClick={() => loadRequests({ includeInventory: true, force: true })}
               className="rounded-xl bg-green-600 px-5 py-3 font-bold text-white transition hover:bg-green-700"
             >
               Atualizar

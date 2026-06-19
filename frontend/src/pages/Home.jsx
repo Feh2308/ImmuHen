@@ -112,7 +112,7 @@ function Welcome() {
       }
 
       try {
-        const state = await fetchSharedStateApi();
+        const state = await fetchSharedStateApi(["farmProfile", "tenantSettings"]);
         const apiProfile = state?.farmProfile;
         const apiTenantSettings = state?.tenantSettings;
 

@@ -960,7 +960,9 @@ app.use("/api/vacitech", async (req, res, next) => {
 app.get("/api/vacitech/state", async (req, res) => {
   const data = await readVacitechData();
   const tenantData = await syncOverdueVaccinationAlerts(data, req.tenantId);
-  res.json(filterTenantDataForAccount(tenantData, req.account));
+  const filteredData = filterTenantDataForAccount(tenantData, req.account);
+
+  res.json(pickStateFields(filteredData, req.query.fields));
 });
 
 app.get("/api/vacitech/notifications/status", async (req, res) => {
@@ -3990,6 +3992,47 @@ function filterTenantDataForAccount(tenantData, account) {
   }
 
   return filteredData;
+}
+
+function pickStateFields(data, fieldsQuery) {
+  const fields = String(fieldsQuery || "")
+    .split(",")
+    .map((field) => field.trim())
+    .filter(Boolean);
+
+  if (fields.length === 0) {
+    return data;
+  }
+
+  const allowedFields = new Set([
+    "farmProfile",
+    "tenantSettings",
+    "subscription",
+    "adminAccess",
+    "vaccines",
+    "entries",
+    "outputs",
+    "stockAlertLevels",
+    "vaccineEditRequests",
+    "entryEditRequests",
+    "vaccineAuditLog",
+    "vaccinators",
+    "schedules",
+    "requests",
+    "completedVaccinations",
+    "notifications",
+    "notificationOutbox",
+    "payments",
+  ]);
+  const selectedFields = new Set(fields);
+
+  return Array.from(selectedFields).reduce((payload, field) => {
+    if (allowedFields.has(field) && Object.prototype.hasOwnProperty.call(data, field)) {
+      payload[field] = data[field];
+    }
+
+    return payload;
+  }, {});
 }
 
 function requireAdminUserManagement(req, res, next) {

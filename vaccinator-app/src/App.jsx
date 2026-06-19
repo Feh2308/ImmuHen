@@ -560,11 +560,23 @@ function App() {
     loadPortal();
 
     const interval = window.setInterval(() => {
-      loadPortal();
-    }, 5000);
+      if (!document.hidden) {
+        loadPortal();
+      }
+    }, 30000);
+    const refreshOnFocus = () => {
+      if (!document.hidden) {
+        loadPortal();
+      }
+    };
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
 
     return () => {
       window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
     };
   }, [session]);
 
@@ -868,7 +880,7 @@ function App() {
       return;
     }
 
-    const maxSize = 1600;
+    const maxSize = 900;
     const scale = Math.min(1, maxSize / Math.max(video.videoWidth, video.videoHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
@@ -883,7 +895,7 @@ function App() {
       ...currentForms,
       [requestId]: {
         ...(currentForms[requestId] || {}),
-        temperaturePhoto: canvas.toDataURL("image/jpeg", 0.82),
+        temperaturePhoto: canvas.toDataURL("image/jpeg", 0.58),
         temperaturePhotoName: `temperatura-vacina-${Date.now()}.jpg`,
         temperaturePhotoCaptureMode: "CAMERA_LIVE",
         temperaturePhotoCapturedAt: capturedAt,
