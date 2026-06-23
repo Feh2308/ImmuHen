@@ -41,6 +41,13 @@ function normalizeVaccinatorAppUrl(url) {
       parsedUrl.port = "";
     }
 
+    if (
+      parsedUrl.origin === window.location.origin &&
+      ["/", ""].includes(parsedUrl.pathname)
+    ) {
+      parsedUrl.pathname = "/vacinador";
+    }
+
     return parsedUrl.toString().replace(/\/$/, "");
   } catch (error) {
     return fallbackUrl;

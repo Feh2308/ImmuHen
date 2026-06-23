@@ -808,6 +808,16 @@ function App() {
     });
   }
 
+  function updateTemperatureStatus(requestId, value) {
+    setTemperatureForms({
+      ...temperatureForms,
+      [requestId]: {
+        ...(temperatureForms[requestId] || {}),
+        temperatureStatus: value,
+      },
+    });
+  }
+
   function updateCompletionNotes(requestId, value) {
     setCompletionNotes({
       ...completionNotes,
@@ -1842,6 +1852,14 @@ function App() {
                       onChange={(event) => updateTemperatureNotes(request.id, event.target.value)}
                       placeholder="Observacao da temperatura registrada"
                     />
+                    <select
+                      value={temperatureForms[request.id]?.temperatureStatus || "NORMAL"}
+                      onChange={(event) => updateTemperatureStatus(request.id, event.target.value)}
+                    >
+                      <option value="NORMAL">Temperatura normal</option>
+                      <option value="ATENCAO">Temperatura em atencao</option>
+                      <option value="FORA_DO_PADRAO">Temperatura fora do padrao</option>
+                    </select>
                     <textarea
                       value={completionNotes[request.id] || ""}
                       onChange={(event) => updateCompletionNotes(request.id, event.target.value)}
@@ -1886,6 +1904,7 @@ function App() {
                       alt="Temperatura da vacina"
                       className="temperature-preview"
                     />
+                    {request.temperatureStatus && <p>Status: {request.temperatureStatus}</p>}
                     {request.temperatureNotes && <p>{request.temperatureNotes}</p>}
                   </div>
                 )}

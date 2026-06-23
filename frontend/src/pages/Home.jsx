@@ -17,8 +17,44 @@ import {
   getTenantSessionKey,
   hasAccountSession,
   hasCompleteFarmProfile,
+  normalizeRequestStatus,
   writeJson,
 } from "../utils/vacitechStorage";
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("pt-BR");
+}
+
+function formatPercent(value) {
+  return `${Number(value || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+
+  return new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR");
+}
+
+function getTodayKey() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function isOpenStatus(status) {
+  return !["CONCLUIDA", "CONCLUIDA_CONFIRMADA", "RECUSADA", "CANCELADA"].includes(normalizeRequestStatus(status));
+}
+
+function getScheduleDate(schedule) {
+  return schedule.vaccinationStartDate || schedule.date || "";
+}
+
+function getUsageDoses(schedule) {
+  return (schedule.vaccineUsages || []).reduce((total, usage) => total + Number(usage.doses || usage.requiredCc || 0), 0);
+}
 
 function Welcome() {
 
@@ -36,7 +72,13 @@ function Welcome() {
 
   const [homeData, setHomeData] = useState({
     activeLots: 0,
-    todayVaccinations: 0,
+    totalBirds: 0,
+    survivalRate: 100,
+    scheduledVaccinations: 0,
+    pendingRequests: 0,
+    stockDays: "-",
+    latestCompleted: null,
+    criticalAlerts: 0,
     criticalStock: 0,
   });
 
@@ -56,16 +98,86 @@ function Welcome() {
 
       try {
 
-        const lots = await fetchBirdLotsApi();
+        const [lots, state] = await Promise.all([
+          fetchBirdLotsApi(),
+          fetchSharedStateApi([
+            "schedules",
+            "requests",
+            "entries",
+            "outputs",
+            "vaccines",
+            "stockAlertLevels",
+            "completedVaccinations",
+            "mortalityRecords",
+            "notifications",
+          ]),
+        ]);
 
         const activeLots = lots.filter(
           (lot) => String(lot.status || "").toLowerCase() === "ativo"
-        ).length;
+        );
+        const totalBirdsInitial = activeLots.reduce((total, lot) => total + Number(lot.avesAlojadas || 0), 0);
+        const totalDeaths = (state.mortalityRecords || []).reduce((total, record) => total + Number(record.deaths || 0), 0);
+        const totalBirds = Math.max(0, totalBirdsInitial - totalDeaths);
+        const survivalRate = totalBirdsInitial > 0 ? (totalBirds / totalBirdsInitial) * 100 : 100;
+        const today = getTodayKey();
+        const openSchedules = (state.schedules || []).filter((schedule) => isOpenStatus(schedule.status));
+        const nextThirtyDaysUsage = openSchedules.reduce((total, schedule) => {
+          const scheduleDate = getScheduleDate(schedule);
+          const normalizedScheduleDate = String(scheduleDate || "").slice(0, 10);
+          const daysDiff = normalizedScheduleDate
+            ? Math.ceil((new Date(`${normalizedScheduleDate}T00:00:00`) - new Date(`${today}T00:00:00`)) / 86400000)
+            : null;
 
-        setHomeData((currentData) => ({
-          ...currentData,
-          activeLots,
-        }));
+          if (daysDiff === null || daysDiff < 0 || daysDiff > 30) {
+            return total;
+          }
+
+          return total + getUsageDoses(schedule);
+        }, 0);
+        const totalEntries = (state.entries || []).reduce((total, item) => total + Number(item.doses || 0), 0);
+        const totalOutputs = (state.outputs || [])
+          .filter((item) => !item.clearedAt)
+          .reduce((total, item) => total + Number(item.doses || 0), 0);
+        const totalStock = Math.max(0, totalEntries - totalOutputs);
+        const averageDailyUse = nextThirtyDaysUsage > 0 ? nextThirtyDaysUsage / 30 : 0;
+        const stockDays = averageDailyUse > 0
+          ? `${Math.floor(totalStock / averageDailyUse)} dias`
+          : totalStock > 0
+            ? "Sem consumo previsto"
+            : "Sem estoque";
+        const pendingRequests = (state.requests || []).filter((request) => {
+          const status = normalizeRequestStatus(request.status);
+
+          return ["PENDENTE", "CONFIRMADA", "EM_ANDAMENTO", "AJUSTE_SOLICITADO", "AGUARDANDO_CONFIRMACAO_ADMIN"].includes(status);
+        }).length;
+        const latestCompleted = [...(state.completedVaccinations || [])]
+          .sort((a, b) => String(b.systemConfirmedAtIso || b.completedAtIso || b.date || "").localeCompare(String(a.systemConfirmedAtIso || a.completedAtIso || a.date || "")))[0] || null;
+        const stockAlertLevels = state.stockAlertLevels || {};
+        const criticalStock = (state.vaccines || []).filter((vaccine) => {
+          const minimum = Number(stockAlertLevels[String(vaccine.id)] || 0);
+          const currentStock = (state.entries || [])
+            .filter((entry) => String(entry.vaccineId) === String(vaccine.id))
+            .reduce((total, entry) => total + Number(entry.doses || 0), 0)
+            - (state.outputs || [])
+              .filter((output) => !output.clearedAt && String(output.vaccineId) === String(vaccine.id))
+              .reduce((total, output) => total + Number(output.doses || 0), 0);
+
+          return minimum > 0 && currentStock <= minimum;
+        }).length;
+        const criticalAlerts = (state.notifications || []).filter((notification) => !notification.deletedAtIso).length + criticalStock;
+
+        setHomeData({
+          activeLots: activeLots.length,
+          totalBirds,
+          survivalRate,
+          scheduledVaccinations: openSchedules.length,
+          pendingRequests,
+          stockDays,
+          latestCompleted,
+          criticalAlerts,
+          criticalStock,
+        });
 
       } catch (error) {
 
@@ -351,16 +463,16 @@ function Welcome() {
 
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
+        <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
 
           <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-sm">
 
             <h2 className="text-zinc-500">
-              Lotes Ativos
+              Aves alojadas atuais
             </h2>
 
-            <p className="text-5xl font-bold text-green-600 mt-4">
-              {homeData.activeLots}
+            <p className="mt-4 text-4xl font-bold text-green-600">
+              {formatNumber(homeData.totalBirds)}
             </p>
 
           </div>
@@ -368,11 +480,11 @@ function Welcome() {
           <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-sm">
 
             <h2 className="text-zinc-500">
-              Vacinações Hoje
+              Sobrevivencia geral
             </h2>
 
-            <p className="text-5xl font-bold text-green-600 mt-4">
-              {homeData.todayVaccinations}
+            <p className="mt-4 text-4xl font-bold text-green-600">
+              {formatPercent(homeData.survivalRate)}
             </p>
 
           </div>
@@ -380,19 +492,48 @@ function Welcome() {
           <div className="bg-white border border-zinc-200 rounded-3xl p-6 shadow-sm">
 
             <h2 className="text-zinc-500">
-              Estoque Crítico
+              Vacinacoes programadas
             </h2>
 
-            <p className="text-5xl font-bold text-red-500 mt-4">
-              {homeData.criticalStock}
+            <p className="mt-4 text-4xl font-bold text-green-600">
+              {homeData.scheduledVaccinations}
             </p>
 
           </div>
+
+          <DashboardCard title="Solicitacoes pendentes" value={homeData.pendingRequests} tone="amber" />
+          <DashboardCard title="Estoque para" value={homeData.stockDays} compact />
+          <DashboardCard
+            title="Ultima vacinacao concluida"
+            value={homeData.latestCompleted
+              ? `${homeData.latestCompleted.vaccinatorName || "Vacinador"} - ${formatDate(homeData.latestCompleted.systemConfirmedAtIso || homeData.latestCompleted.completedAtIso || homeData.latestCompleted.date)}`
+              : "Sem registro"}
+            compact
+          />
+          <DashboardCard title="Lotes ativos" value={homeData.activeLots} />
+          <DashboardCard title="Alertas criticos" value={homeData.criticalAlerts} tone="red" />
 
         </div>
 
       </div>
 
+    </div>
+  );
+}
+
+function DashboardCard({ title, value, tone = "green", compact = false }) {
+  const colorClass = tone === "red"
+    ? "text-red-500"
+    : tone === "amber"
+      ? "text-amber-600"
+      : "text-green-600";
+
+  return (
+    <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <h2 className="text-zinc-500">{title}</h2>
+      <p className={`mt-4 font-bold ${colorClass} ${compact ? "text-2xl" : "text-4xl"}`}>
+        {value}
+      </p>
     </div>
   );
 }

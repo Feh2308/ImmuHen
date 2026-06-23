@@ -28,6 +28,7 @@ function TemperatureCapture() {
   const [photoName, setPhotoName] = useState("");
   const [photoCapturedAt, setPhotoCapturedAt] = useState("");
   const [notes, setNotes] = useState("");
+  const [temperatureStatus, setTemperatureStatus] = useState("NORMAL");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
@@ -153,6 +154,7 @@ function TemperatureCapture() {
         temperaturePhoto: photo,
         temperaturePhotoName: photoName || "temperatura-vacina.jpg",
         temperatureNotes: notes,
+        temperatureStatus,
         temperaturePhotoSource: "GRANJA",
         temperaturePhotoBy: "Granja",
         temperaturePhotoCaptureMode: "CAMERA_LIVE",
@@ -163,6 +165,7 @@ function TemperatureCapture() {
       setPhotoName("");
       setPhotoCapturedAt("");
       setNotes("");
+      setTemperatureStatus("NORMAL");
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -281,6 +284,19 @@ function TemperatureCapture() {
               </p>
             </div>
           )}
+
+          <label className="grid gap-2 text-sm font-bold text-zinc-700">
+            Status da temperatura
+            <select
+              value={temperatureStatus}
+              onChange={(event) => setTemperatureStatus(event.target.value)}
+              className="rounded-2xl border border-green-100 bg-green-50 p-4 text-zinc-900 outline-none"
+            >
+              <option value="NORMAL">Normal</option>
+              <option value="ATENCAO">Atencao</option>
+              <option value="FORA_DO_PADRAO">Fora do padrao</option>
+            </select>
+          </label>
 
           <label className="grid gap-2 text-sm font-bold text-zinc-700">
             Observacao

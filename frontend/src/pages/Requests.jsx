@@ -1160,7 +1160,7 @@ function Requests() {
                   </p>
                 )}
 
-                {(request.temperaturePhoto || request.temperatureNotes || request.doseRequest) && (
+                {(request.temperaturePhoto || request.temperatureNotes || request.temperatureStatus || request.doseRequest) && (
                   <div className="mt-5 grid gap-4 md:grid-cols-3">
                     {request.temperaturePhoto && (
                       <div className="rounded-xl border border-green-100 bg-white p-4">
@@ -1180,6 +1180,17 @@ function Requests() {
                             Origem: {request.temperaturePhotoSource === "GRANJA" ? "Granja" : "Vacinador"}
                           </p>
                         )}
+                      </div>
+                    )}
+
+                    {request.temperatureStatus && (
+                      <div className="rounded-xl border border-green-100 bg-white p-4">
+                        <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                          Status temperatura
+                        </p>
+                        <p className="mt-2 font-bold text-zinc-900">
+                          {request.temperatureStatus}
+                        </p>
                       </div>
                     )}
 
@@ -1446,8 +1457,8 @@ function Requests() {
                     </div>
                   )}
 
-                  {(record.temperaturePhoto || record.temperatureNotes) && (
-                    <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr]">
+                  {(record.temperaturePhoto || record.temperatureNotes || record.temperatureStatus) && (
+                    <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_160px]">
                       {record.temperaturePhoto && (
                         <img
                           src={record.temperaturePhoto}
@@ -1462,6 +1473,16 @@ function Requests() {
                           </p>
                           <p className="mt-2 whitespace-pre-wrap text-zinc-700">
                             {record.temperatureNotes}
+                          </p>
+                        </div>
+                      )}
+                      {record.temperatureStatus && (
+                        <div className="rounded-xl border border-green-100 bg-white p-3">
+                          <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                            Status
+                          </p>
+                          <p className="mt-2 font-bold text-zinc-900">
+                            {record.temperatureStatus}
                           </p>
                         </div>
                       )}

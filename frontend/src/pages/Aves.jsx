@@ -1,5 +1,6 @@
 import Sidebar from "../components/Sidebar";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   deleteBirdLotApi,
   fetchBirdLotsApi,
@@ -404,6 +405,7 @@ function Aves() {
                     <th className="pb-4">Aves</th>
                     <th className="pb-4">Alojamento</th>
                     <th className="pb-4">Status</th>
+                    <th className="pb-4">Historico</th>
                   </tr>
                 </thead>
 
@@ -416,6 +418,14 @@ function Aves() {
                       <td>{lot.avesAlojadas || 0}</td>
                       <td>{formatDate(lot.dataAlojamento)}</td>
                       <td>{lot.status || "Ativo"}</td>
+                      <td>
+                        <Link
+                          to={`/rastreabilidade?lote=${lot.id}`}
+                          className="rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700"
+                        >
+                          Ver lote
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -443,6 +453,12 @@ function Aves() {
                   </div>
                   <p className="mt-2 font-bold text-zinc-900">{lot.linhagem || "-"} - {lot.ranchoAtual || "Pinteiro"}</p>
                   <p className="text-sm text-zinc-500">{formatDate(lot.dataAlojamento)} | {lot.avesAlojadas || 0} aves</p>
+                  <Link
+                    to={`/rastreabilidade?lote=${lot.id}`}
+                    className="mt-3 inline-flex rounded-xl bg-white px-4 py-2 text-sm font-bold text-green-700 ring-1 ring-green-100 transition hover:bg-green-100"
+                  >
+                    Ver rastreabilidade
+                  </Link>
                 </div>
               ))}
 
@@ -499,6 +515,12 @@ function Aves() {
                       <p className="mt-1 text-zinc-600">
                         {lot.ranchoAtual || "Pinteiro"} | {lot.avesAlojadas || 0} aves | {formatDate(lot.dataAlojamento)}
                       </p>
+                      <Link
+                        to={`/rastreabilidade?lote=${lot.id}`}
+                        className="mt-4 inline-flex rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700"
+                      >
+                        Abrir historico completo
+                      </Link>
                     </div>
 
                     <div className="rounded-2xl bg-white p-4 ring-1 ring-green-100">

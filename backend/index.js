@@ -2365,6 +2365,7 @@ app.patch("/api/vacitech/requests/:id/temperature-photo", async (req, res) => {
     temperaturePhoto,
     temperaturePhotoName: String(req.body.temperaturePhotoName || "temperatura-vacina"),
     temperatureNotes: String(req.body.temperatureNotes || ""),
+    temperatureStatus: String(req.body.temperatureStatus || "NORMAL").toUpperCase(),
     temperaturePhotoSource: String(req.body.temperaturePhotoSource || "VACINADOR").toUpperCase(),
     temperaturePhotoBy: String(req.body.temperaturePhotoBy || "").trim(),
     temperaturePhotoCaptureMode,
@@ -2614,6 +2615,235 @@ app.post("/api/vacitech/stock-alerts", async (req, res) => {
     notifications: tenantData.notifications,
     notificationOutbox: tenantData.notificationOutbox,
   });
+});
+
+app.get("/api/vacitech/mortality", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+
+  res.json((tenantData.mortalityRecords || []).filter((record) => !record.deletedAt));
+});
+
+app.post("/api/vacitech/mortality", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const record = normalizeMortalityRecord(req.body, {
+    tenantId: req.tenantId,
+    responsible: req.account?.name || req.account?.email || "",
+  });
+
+  if (!record.date || !record.birdLotId || record.deaths <= 0) {
+    return res.status(400).json({
+      message: "Informe data, lote e quantidade de mortes maior que zero.",
+    });
+  }
+
+  tenantData.mortalityRecords = [
+    record,
+    ...(tenantData.mortalityRecords || []),
+  ];
+
+  const mortalityAlert = createMortalityAlertIfNeeded(tenantData, record);
+  if (mortalityAlert) {
+    tenantData.notifications.push(mortalityAlert);
+  }
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    record,
+    mortalityRecords: tenantData.mortalityRecords.filter((item) => !item.deletedAt),
+    notifications: tenantData.notifications,
+  });
+});
+
+app.put("/api/vacitech/mortality/:id", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const currentRecord = (tenantData.mortalityRecords || []).find((record) => String(record.id) === String(req.params.id));
+
+  if (!currentRecord || currentRecord.deletedAt) {
+    return res.status(404).json({
+      message: "Registro de mortalidade nao encontrado.",
+    });
+  }
+
+  const updatedRecord = normalizeMortalityRecord({
+    ...currentRecord,
+    ...req.body,
+    id: currentRecord.id,
+    createdAt: currentRecord.createdAt,
+  }, {
+    tenantId: req.tenantId,
+    responsible: currentRecord.responsible || req.account?.name || req.account?.email || "",
+  });
+
+  tenantData.mortalityRecords = (tenantData.mortalityRecords || []).map((record) => (
+    String(record.id) === String(req.params.id)
+      ? {
+          ...updatedRecord,
+          updatedAt: new Date().toISOString(),
+        }
+      : record
+  ));
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    record: updatedRecord,
+    mortalityRecords: tenantData.mortalityRecords.filter((item) => !item.deletedAt),
+  });
+});
+
+app.delete("/api/vacitech/mortality/:id", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const deletedAt = new Date().toISOString();
+
+  tenantData.mortalityRecords = (tenantData.mortalityRecords || []).map((record) => (
+    String(record.id) === String(req.params.id)
+      ? {
+          ...record,
+          deletedAt,
+          deletedBy: req.account?.name || req.account?.email || "Sistema",
+        }
+      : record
+  ));
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    success: true,
+    mortalityRecords: tenantData.mortalityRecords.filter((item) => !item.deletedAt),
+  });
+});
+
+app.get("/api/vacitech/sanitary-records", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+
+  res.json((tenantData.sanitaryRecords || []).filter((record) => !record.deletedAt));
+});
+
+app.post("/api/vacitech/sanitary-records", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const record = normalizeSanitaryRecord(req.body, {
+    tenantId: req.tenantId,
+    responsible: req.account?.name || req.account?.email || "",
+  });
+
+  if (!record.type || !record.date || !record.product) {
+    return res.status(400).json({
+      message: "Informe tipo, data e produto do registro sanitario.",
+    });
+  }
+
+  tenantData.sanitaryRecords = [
+    record,
+    ...(tenantData.sanitaryRecords || []),
+  ];
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    record,
+    sanitaryRecords: tenantData.sanitaryRecords.filter((item) => !item.deletedAt),
+  });
+});
+
+app.put("/api/vacitech/sanitary-records/:id", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const currentRecord = (tenantData.sanitaryRecords || []).find((record) => String(record.id) === String(req.params.id));
+
+  if (!currentRecord || currentRecord.deletedAt) {
+    return res.status(404).json({
+      message: "Registro sanitario nao encontrado.",
+    });
+  }
+
+  const updatedRecord = normalizeSanitaryRecord({
+    ...currentRecord,
+    ...req.body,
+    id: currentRecord.id,
+    createdAt: currentRecord.createdAt,
+  }, {
+    tenantId: req.tenantId,
+    responsible: currentRecord.responsible || req.account?.name || req.account?.email || "",
+  });
+
+  tenantData.sanitaryRecords = (tenantData.sanitaryRecords || []).map((record) => (
+    String(record.id) === String(req.params.id)
+      ? {
+          ...updatedRecord,
+          updatedAt: new Date().toISOString(),
+        }
+      : record
+  ));
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    record: updatedRecord,
+    sanitaryRecords: tenantData.sanitaryRecords.filter((item) => !item.deletedAt),
+  });
+});
+
+app.delete("/api/vacitech/sanitary-records/:id", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const deletedAt = new Date().toISOString();
+
+  tenantData.sanitaryRecords = (tenantData.sanitaryRecords || []).map((record) => (
+    String(record.id) === String(req.params.id)
+      ? {
+          ...record,
+          deletedAt,
+          deletedBy: req.account?.name || req.account?.email || "Sistema",
+        }
+      : record
+  ));
+
+  data.tenants[req.tenantId] = tenantData;
+  await writeVacitechData(data);
+
+  res.json({
+    success: true,
+    sanitaryRecords: tenantData.sanitaryRecords.filter((item) => !item.deletedAt),
+  });
+});
+
+app.get("/api/vacitech/sanitary-agenda", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = await syncOverdueVaccinationAlerts(data, req.tenantId);
+  const agenda = buildSanitaryAgenda(tenantData);
+
+  res.json(agenda);
+});
+
+app.get("/api/vacitech/lots/:id/traceability", async (req, res) => {
+  const data = await readVacitechData();
+  const tenantData = getTenantData(data, req.tenantId);
+  const lot = await prisma.birdLot.findFirst({
+    where: {
+      id: Number(req.params.id),
+      tenantId: req.tenantId,
+    },
+  });
+
+  if (!lot) {
+    return res.status(404).json({
+      message: "Lote nao encontrado.",
+    });
+  }
+
+  res.json(buildLotTraceability(lot, tenantData));
 });
 
 app.post("/api/vacitech/vaccinator-login", async (req, res) => {
@@ -3247,6 +3477,8 @@ function getEmptyTenantData() {
     schedules: [],
     requests: [],
     completedVaccinations: [],
+    mortalityRecords: [],
+    sanitaryRecords: [],
     notifications: [],
     notificationOutbox: [],
     subscription: createInitialSubscription(),
@@ -3413,6 +3645,8 @@ function migrateVacitechData(data = {}) {
         schedules: Array.isArray(data.schedules) ? data.schedules : [],
         requests: Array.isArray(data.requests) ? data.requests : [],
         completedVaccinations: Array.isArray(data.completedVaccinations) ? data.completedVaccinations : [],
+        mortalityRecords: Array.isArray(data.mortalityRecords) ? data.mortalityRecords : [],
+        sanitaryRecords: Array.isArray(data.sanitaryRecords) ? data.sanitaryRecords : [],
         notifications: Array.isArray(data.notifications) ? data.notifications : [],
         notificationOutbox: Array.isArray(data.notificationOutbox) ? data.notificationOutbox : [],
         subscription: data.subscription || createInitialSubscription(),
@@ -3473,6 +3707,12 @@ function getTenantData(data, tenantId) {
       : [],
     completedVaccinations: Array.isArray(rawTenantData.completedVaccinations)
       ? rawTenantData.completedVaccinations
+      : [],
+    mortalityRecords: Array.isArray(rawTenantData.mortalityRecords)
+      ? rawTenantData.mortalityRecords
+      : [],
+    sanitaryRecords: Array.isArray(rawTenantData.sanitaryRecords)
+      ? rawTenantData.sanitaryRecords
       : [],
     notifications: Array.isArray(rawTenantData.notifications)
       ? rawTenantData.notifications
@@ -3921,6 +4161,18 @@ function getVacitechRoutePermissions(req) {
     return [ACCESS_MODULES.PROGRAMA];
   }
 
+  if (requestPath.startsWith("/mortality")) {
+    return [ACCESS_MODULES.AVES];
+  }
+
+  if (requestPath.startsWith("/lots")) {
+    return [ACCESS_MODULES.AVES];
+  }
+
+  if (requestPath.startsWith("/sanitary-records") || requestPath.startsWith("/sanitary-agenda")) {
+    return [ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.SOLICITACOES];
+  }
+
   if (requestPath.startsWith("/requests")) {
     return [ACCESS_MODULES.SOLICITACOES, ACCESS_MODULES.PROGRAMA];
   }
@@ -3968,6 +4220,14 @@ function filterTenantDataForAccount(tenantData, account) {
   if (!hasAnyPermission(account, [ACCESS_MODULES.RELATORIOS, ACCESS_MODULES.ADMINISTRADOR])) {
     filteredData.vaccineAuditLog = [];
     filteredData.completedVaccinations = [];
+  }
+
+  if (!hasPermission(account, ACCESS_MODULES.AVES)) {
+    filteredData.mortalityRecords = [];
+  }
+
+  if (!hasAnyPermission(account, [ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.SOLICITACOES, ACCESS_MODULES.ADMINISTRADOR])) {
+    filteredData.sanitaryRecords = [];
   }
 
   if (!hasPermission(account, ACCESS_MODULES.VACINADORES)) {
@@ -4020,6 +4280,8 @@ function pickStateFields(data, fieldsQuery) {
     "schedules",
     "requests",
     "completedVaccinations",
+    "mortalityRecords",
+    "sanitaryRecords",
     "notifications",
     "notificationOutbox",
     "payments",
@@ -4469,6 +4731,282 @@ function normalizeVaccinator(data = {}) {
     code: String(data.code || data.codigo || "").trim(),
     notificationContact: String(data.notificationContact || "").trim(),
     status: data.status || "ATIVO",
+  };
+}
+
+function normalizeDateInput(value) {
+  const text = String(value || "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const parsed = new Date(text);
+
+  if (!Number.isNaN(parsed.getTime()) && /^\d{4}-\d{2}-\d{2}/.test(text)) {
+    return parsed.toISOString().split("T")[0];
+  }
+
+  return text.slice(0, 10);
+}
+
+function getTodayKey() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function getDaysUntil(dateValue) {
+  const date = new Date(`${normalizeDateInput(dateValue)}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const today = new Date(`${getTodayKey()}T00:00:00`);
+
+  return Math.round((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function getCurrentStockForVaccine(tenantData, vaccineId) {
+  const entries = tenantData.entries || [];
+  const outputs = tenantData.outputs || [];
+  const totalEntries = entries
+    .filter((entry) => String(entry.vaccineId) === String(vaccineId))
+    .reduce((total, entry) => total + Number(entry.doses || 0), 0);
+  const totalOutputs = outputs
+    .filter((output) => String(output.vaccineId) === String(vaccineId) && !output.clearedAt)
+    .reduce((total, output) => total + Number(output.doses || 0), 0);
+
+  return totalEntries - totalOutputs;
+}
+
+function normalizeMortalityRecord(value = {}, context = {}) {
+  const now = new Date();
+  const deaths = Number(String(value.deaths ?? value.quantidade ?? value.mortes ?? "0").replace(",", "."));
+
+  return {
+    id: String(value.id || `mortality-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`),
+    tenantId: context.tenantId || value.tenantId || "",
+    date: normalizeDateInput(value.date || value.data) || getTodayKey(),
+    birdLotId: String(value.birdLotId || value.loteId || value.lotId || ""),
+    birdLotName: String(value.birdLotName || value.lote || value.lotName || "").trim(),
+    initialBirds: Number(value.initialBirds || value.avesAlojadas || 0),
+    deaths: Number.isFinite(deaths) ? Math.max(0, deaths) : 0,
+    observation: String(value.observation || value.observacao || value.notes || "").trim(),
+    responsible: String(value.responsible || value.responsavel || context.responsible || "").trim(),
+    createdAt: value.createdAt || now.toISOString(),
+    updatedAt: value.updatedAt || now.toISOString(),
+    deletedAt: value.deletedAt || "",
+    deletedBy: value.deletedBy || "",
+  };
+}
+
+function normalizeSanitaryRecord(value = {}, context = {}) {
+  const now = new Date();
+
+  return {
+    id: String(value.id || `sanitary-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`),
+    tenantId: context.tenantId || value.tenantId || "",
+    type: String(value.type || value.tipo || "").trim().toUpperCase(),
+    date: normalizeDateInput(value.date || value.data) || getTodayKey(),
+    birdLotId: String(value.birdLotId || value.loteId || value.lotId || ""),
+    birdLotName: String(value.birdLotName || value.lote || value.lotName || "").trim(),
+    product: String(value.product || value.produto || "").trim(),
+    quantity: String(value.quantity || value.quantidade || "").trim(),
+    responsible: String(value.responsible || value.responsavel || context.responsible || "").trim(),
+    observations: String(value.observations || value.observacoes || value.notes || "").trim(),
+    fileName: String(value.fileName || value.arquivoNome || "").trim(),
+    fileDataUrl: String(value.fileDataUrl || value.arquivoDataUrl || "").trim(),
+    status: String(value.status || "REGISTRADO").trim().toUpperCase(),
+    createdAt: value.createdAt || now.toISOString(),
+    updatedAt: value.updatedAt || now.toISOString(),
+    deletedAt: value.deletedAt || "",
+    deletedBy: value.deletedBy || "",
+  };
+}
+
+function getActiveMortalityRecords(tenantData, birdLotId = "") {
+  return (tenantData.mortalityRecords || []).filter((record) => (
+    !record.deletedAt &&
+    (!birdLotId || String(record.birdLotId) === String(birdLotId))
+  ));
+}
+
+function getActiveSanitaryRecords(tenantData, birdLotId = "") {
+  return (tenantData.sanitaryRecords || []).filter((record) => (
+    !record.deletedAt &&
+    (!birdLotId || String(record.birdLotId) === String(birdLotId))
+  ));
+}
+
+function getMortalitySummaryForLot(lot, tenantData) {
+  const records = getActiveMortalityRecords(tenantData, lot.id);
+  const initialBirds = Number(lot.avesAlojadas || 0);
+  const totalDeaths = records.reduce((total, record) => total + Number(record.deaths || 0), 0);
+  const currentBirds = Math.max(0, initialBirds - totalDeaths);
+  const survivalRate = initialBirds > 0
+    ? (currentBirds / initialBirds) * 100
+    : 0;
+
+  return {
+    initialBirds,
+    totalDeaths,
+    currentBirds,
+    survivalRate,
+    records,
+  };
+}
+
+function createMortalityAlertIfNeeded(tenantData, record) {
+  const initialBirds = Number(record.initialBirds || 0);
+  const existingDeaths = getActiveMortalityRecords(tenantData, record.birdLotId)
+    .filter((item) => String(item.id) !== String(record.id))
+    .reduce((total, item) => total + Number(item.deaths || 0), 0);
+  const totalDeaths = existingDeaths + Number(record.deaths || 0);
+  const mortalityRate = initialBirds > 0
+    ? (totalDeaths / initialBirds) * 100
+    : Number(record.deaths || 0) >= 50
+      ? 3
+      : 0;
+
+  if (mortalityRate < 3) {
+    return null;
+  }
+
+  return {
+    id: `mortality-alert-${record.id}`,
+    type: "HIGH_MORTALITY",
+    title: "Mortalidade alta",
+    message: `Lote ${record.birdLotName || record.birdLotId} atingiu ${mortalityRate.toFixed(2)}% de mortalidade acumulada.`,
+    birdLotId: record.birdLotId,
+    birdLotName: record.birdLotName,
+    mortalityRate,
+    createdAt: new Date().toLocaleString("pt-BR"),
+    createdAtIso: new Date().toISOString(),
+  };
+}
+
+function buildSanitaryAgenda(tenantData) {
+  const schedules = (tenantData.schedules || []).filter((schedule) => {
+    const status = normalizeRequestStatus(schedule.status);
+
+    return !["CONCLUIDA", "CONCLUIDA_CONFIRMADA", "RECUSADA", "CANCELADA"].includes(status);
+  });
+  const requests = (tenantData.requests || []).filter((request) => !request.archivedAtIso);
+  const entries = tenantData.entries || [];
+  const stockAlertLevels = tenantData.stockAlertLevels || {};
+  const overdueVaccinations = schedules.filter((schedule) => {
+    const date = schedule.vaccinationEndDate || schedule.vaccinationStartDate || schedule.date;
+    const daysUntil = getDaysUntil(date);
+
+    return daysUntil !== null && daysUntil < 0;
+  });
+  const futureApplications = schedules.filter((schedule) => {
+    const date = schedule.vaccinationStartDate || schedule.date;
+    const daysUntil = getDaysUntil(date);
+
+    return daysUntil !== null && daysUntil >= 0;
+  });
+  const pendingRequests = requests.filter((request) => {
+    const status = normalizeRequestStatus(request.status);
+
+    return ["PENDENTE", "CONFIRMADA", "EM_ANDAMENTO", "AJUSTE_SOLICITADO"].includes(status);
+  });
+  const awaitingConfirmation = requests.filter((request) => isAwaitingAdminConfirmationStatus(request.status));
+  const expiredVaccines = entries.filter((entry) => {
+    const daysUntil = getDaysUntil(entry.validade || entry.expiresAt || entry.validity);
+
+    return daysUntil !== null && daysUntil < 0;
+  });
+  const expiringVaccines = entries.filter((entry) => {
+    const daysUntil = getDaysUntil(entry.validade || entry.expiresAt || entry.validity);
+
+    return daysUntil !== null && daysUntil >= 0 && daysUntil <= 30;
+  });
+  const lowStock = (tenantData.vaccines || [])
+    .map((vaccine) => {
+      const minimum = Number(stockAlertLevels[String(vaccine.id)] || 0);
+      const currentStock = getCurrentStockForVaccine(tenantData, vaccine.id);
+
+      return {
+        vaccineId: vaccine.id,
+        vaccineName: vaccine.nome || vaccine.name || "Vacina",
+        minimum,
+        currentStock,
+      };
+    })
+    .filter((item) => item.minimum > 0 && item.currentStock <= item.minimum);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    expiredVaccines,
+    expiringVaccines,
+    futureApplications,
+    pendingRequests,
+    lowStock,
+    overdueVaccinations,
+    inProgressTasks: requests.filter((request) => normalizeRequestStatus(request.status) === "EM_ANDAMENTO"),
+    awaitingConfirmation,
+    alerts: [
+      ...overdueVaccinations.map((item) => ({
+        type: "OVERDUE_VACCINATION",
+        title: "Aplicacao atrasada",
+        message: `${item.programSuggestedName || item.birdLotName || "Vacinacao"} esta atrasada.`,
+        refId: item.id,
+      })),
+      ...lowStock.map((item) => ({
+        type: "LOW_STOCK",
+        title: "Estoque baixo",
+        message: `${item.vaccineName}: ${item.currentStock} dose(s) em estoque.`,
+        refId: item.vaccineId,
+      })),
+    ],
+  };
+}
+
+function buildLotTraceability(lot, tenantData) {
+  const mortality = getMortalitySummaryForLot(lot, tenantData);
+  const lotId = String(lot.id);
+  const schedules = (tenantData.schedules || []).filter((schedule) => String(schedule.birdLotId || "") === lotId);
+  const requests = (tenantData.requests || []).filter((request) => String(request.birdLotId || "") === lotId);
+  const completedVaccinations = (tenantData.completedVaccinations || []).filter((record) => String(record.birdLotId || "") === lotId);
+  const sanitaryRecords = getActiveSanitaryRecords(tenantData, lotId);
+  const temperaturePhotos = [
+    ...requests,
+    ...completedVaccinations,
+  ]
+    .filter((record) => record.temperaturePhoto || record.temperatureNotes)
+    .map((record) => ({
+      requestId: record.id,
+      scheduleId: record.scheduleId || "",
+      vaccine: (record.vaccineUsages || record.actualVaccineUsages || []).map((usage) => usage.vacina).filter(Boolean).join(", "),
+      photo: record.temperaturePhoto || "",
+      notes: record.temperatureNotes || "",
+      status: record.temperatureStatus || "",
+      source: record.temperaturePhotoSource || "",
+      capturedAt: record.temperaturePhotoCapturedAt || "",
+      uploadedAt: record.temperaturePhotoUploadedAt || "",
+    }));
+
+  return {
+    lot,
+    summary: {
+      initialBirds: mortality.initialBirds,
+      totalDeaths: mortality.totalDeaths,
+      currentBirds: mortality.currentBirds,
+      survivalRate: mortality.survivalRate,
+    },
+    vaccinations: [
+      ...completedVaccinations,
+      ...requests,
+      ...schedules,
+    ],
+    mortalityRecords: mortality.records,
+    sanitaryRecords,
+    temperaturePhotos,
+    stockMovements: (tenantData.outputs || []).filter((output) => (
+      String(output.birdLotId || "") === lotId ||
+      String(output.birdLotName || output.destino || "").includes(String(lot.id))
+    )),
   };
 }
 

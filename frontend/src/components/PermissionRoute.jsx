@@ -5,6 +5,7 @@ import { ACCESS_MODULES, canAccessAny, getCurrentUser } from "../utils/permissio
 const fallbackRoutes = [
   { to: "/home", permissions: [ACCESS_MODULES.DASHBOARD] },
   { to: "/Aves", permissions: [ACCESS_MODULES.AVES] },
+  { to: "/mortalidade", permissions: [ACCESS_MODULES.AVES] },
   { to: "/vacinas", permissions: [ACCESS_MODULES.VACINAS] },
   { to: "/entradas", permissions: [ACCESS_MODULES.ENTRADAS] },
   { to: "/estoque", permissions: [ACCESS_MODULES.ESTOQUE] },
