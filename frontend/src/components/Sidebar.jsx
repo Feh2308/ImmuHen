@@ -16,8 +16,6 @@ function Sidebar() {
     { to: "/estoque", label: "Estoque", permissions: [ACCESS_MODULES.ESTOQUE] },
     { to: "/administrador", label: "Administrador", permissions: [ACCESS_MODULES.ADMINISTRADOR] },
     { to: "/agenda", label: "Programa", permissions: [ACCESS_MODULES.PROGRAMA] },
-    { to: "/agenda-sanitaria", label: "Agenda Sanitaria", permissions: [ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.SOLICITACOES] },
-    { to: "/sanitario", label: "Sanitario", permissions: [ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.SOLICITACOES] },
     { to: "/vaccinators", label: "Vacinadores", permissions: [ACCESS_MODULES.VACINADORES] },
     { to: "/solicitacoes", label: "Notificacoes", permissions: [ACCESS_MODULES.SOLICITACOES] },
     { to: "/perfil", label: "Perfil da Granja", permissions: [ACCESS_MODULES.CONFIGURACOES] },

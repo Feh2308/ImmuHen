@@ -100,7 +100,7 @@ function LotTraceability() {
         <section className="rounded-3xl border border-green-100 bg-white p-8 shadow-sm">
           <h1 className="text-5xl font-bold text-zinc-900">Rastreabilidade por lote</h1>
           <p className="mt-2 text-zinc-500">
-            Historico completo de aves, mortalidade, vacinacoes, temperatura e registros sanitarios.
+            Historico completo de aves, mortalidade, vacinacoes e temperatura.
           </p>
         </section>
 
@@ -241,17 +241,6 @@ function LotTraceability() {
                     </article>
                   ))}
                   {(traceability?.temperaturePhotos || []).length === 0 && <EmptyMessage text="Nenhuma foto de temperatura encontrada para este lote." />}
-                </TraceSection>
-
-                <TraceSection title="Registros sanitarios">
-                  {(traceability?.sanitaryRecords || []).map((record) => (
-                    <article key={record.id} className="rounded-2xl border border-green-100 p-4">
-                      <strong className="text-zinc-900">{record.type} - {record.product || "-"}</strong>
-                      <p className="mt-1 text-sm text-zinc-500">{formatDate(record.date)} | {record.responsible || "-"}</p>
-                      <p className="mt-2 text-sm text-zinc-600">{record.quantity || "-"} | {record.observations || "-"}</p>
-                    </article>
-                  ))}
-                  {(traceability?.sanitaryRecords || []).length === 0 && <EmptyMessage text="Nenhum registro sanitario para este lote." />}
                 </TraceSection>
               </>
             )}

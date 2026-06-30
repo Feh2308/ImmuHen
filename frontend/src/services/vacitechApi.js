@@ -323,38 +323,6 @@ export async function deleteMortalityRecordApi(id) {
   });
 }
 
-export async function fetchSanitaryRecordsApi() {
-  return apiRequest("/api/vacitech/sanitary-records");
-}
-
-export async function createSanitaryRecordApi(record) {
-  const data = await apiRequest("/api/vacitech/sanitary-records", {
-    method: "POST",
-    body: JSON.stringify(record),
-  });
-
-  return data;
-}
-
-export async function updateSanitaryRecordApi(id, record) {
-  const data = await apiRequest(`/api/vacitech/sanitary-records/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(record),
-  });
-
-  return data;
-}
-
-export async function deleteSanitaryRecordApi(id) {
-  return apiRequest(`/api/vacitech/sanitary-records/${id}`, {
-    method: "DELETE",
-  });
-}
-
-export async function fetchSanitaryAgendaApi() {
-  return apiRequest("/api/vacitech/sanitary-agenda");
-}
-
 export async function fetchLotTraceabilityApi(id) {
   return apiRequest(`/api/vacitech/lots/${id}/traceability`);
 }

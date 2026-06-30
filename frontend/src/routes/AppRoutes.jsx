@@ -18,8 +18,6 @@ import TemperatureCapture from "../pages/TemperatureCapture";
 import Chief from "../pages/Chief";
 import OwnerAdmin from "../pages/OwnerAdmin";
 import Mortality from "../pages/Mortality";
-import Sanitary from "../pages/Sanitary";
-import SanitaryAgenda from "../pages/SanitaryAgenda";
 import LotTraceability from "../pages/LotTraceability";
 import PermissionRoute from "../components/PermissionRoute";
 import { ACCESS_MODULES } from "../utils/permissions";
@@ -85,8 +83,6 @@ export default function AppRoutes() {
         <Route path="/Aves" element={<PermissionRoute permissions={[ACCESS_MODULES.AVES]}><Aves /></PermissionRoute>} />
         <Route path="/mortalidade" element={<PermissionRoute permissions={[ACCESS_MODULES.AVES]}><Mortality /></PermissionRoute>} />
         <Route path="/rastreabilidade" element={<PermissionRoute permissions={[ACCESS_MODULES.AVES]}><LotTraceability /></PermissionRoute>} />
-        <Route path="/sanitario" element={<PermissionRoute permissions={[ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.SOLICITACOES]}><Sanitary /></PermissionRoute>} />
-        <Route path="/agenda-sanitaria" element={<PermissionRoute permissions={[ACCESS_MODULES.PROGRAMA, ACCESS_MODULES.ESTOQUE, ACCESS_MODULES.SOLICITACOES]}><SanitaryAgenda /></PermissionRoute>} />
 
       </Routes>
 
