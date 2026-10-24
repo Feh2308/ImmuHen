@@ -1,0 +1,60 @@
+services:
+  backend:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    env_file:
+      - ./env/backend.env
+    environment:
+      VACITECH_DATA_FILE: /data/vacitech-data.json
+    volumes:
+      - vacitech-data:/data
+    networks:
+      - web
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        VITE_API_URL: https://api.${DOMAIN}
+        VITE_VACCINATOR_APP_URL: https://vacinador.${DOMAIN}
+    restart: unless-stopped
+    networks:
+      - web
+
+  vaccinator-app:
+    build:
+      context: ../vaccinator-app
+      args:
+        VITE_API_URL: https://api.${DOMAIN}
+    restart: unless-stopped
+    networks:
+      - web
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+      TLS_EMAIL: ${TLS_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+      - frontend
+      - vaccinator-app
+    networks:
+      - web
+
+networks:
+  web:
+
+volumes:
+  vacitech-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,15 @@
+{
+	email {$TLS_EMAIL}
+}
+
+api.{$DOMAIN} {
+	reverse_proxy backend:3001
+}
+
+app.{$DOMAIN} {
+	reverse_proxy frontend:80
+}
+
+vacinador.{$DOMAIN} {
+	reverse_proxy vaccinator-app:80
+}

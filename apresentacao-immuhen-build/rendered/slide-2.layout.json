@@ -1,0 +1,761 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/yfr3bc",
+    "id": "yfr3bc",
+    "slide": 2,
+    "layoutId": "1c6f917d-a1cb-4274-985f-ea40fab47bd1",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "a9009363-d9ab-407f-8d46-e0a0fd7e6c44",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F5F1E8",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Aptos",
+      "Aptos Display"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "1c6f917d-a1cb-4274-985f-ea40fab47bd1",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "a9009363-d9ab-407f-8d46-e0a0fd7e6c44",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "a9009363-d9ab-407f-8d46-e0a0fd7e6c44",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/m9sve94n",
+      "id": "1",
+      "bbox": [
+        742,
+        0,
+        538,
+        720
+      ],
+      "alt": "Pintinho saudável em ambiente limpo",
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "asset": {
+        "assetId": "e84a51c9-f53d-4e91-a2b0-7c276e5e5f06",
+        "contentType": "image/png",
+        "byteLength": 1848652
+      }
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cfyxgzat",
+      "id": "2",
+      "bbox": [
+        742,
+        0,
+        538,
+        720
+      ],
+      "geometry": "rect",
+      "fillColor": "rgba(30, 90, 58, 0.09412)",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/xg7e94be",
+      "id": "3",
+      "bbox": [
+        72,
+        54,
+        440,
+        22
+      ],
+      "geometry": "rect",
+      "text": "O DESAFIO",
+      "textPreview": "O DESAFIO",
+      "resolvedFontSize": 13,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13,
+        "typeface": "Aptos",
+        "color": "#1E5A3A",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "O DESAFIO"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "O DESAFIO",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 13,
+            "typeface": "Aptos",
+            "color": "#1E5A3A",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "O DESAFIO",
+              "fontSize": 13,
+              "typeface": "Aptos",
+              "color": "#1E5A3A",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/29wvapsr",
+      "id": "4",
+      "bbox": [
+        72,
+        94,
+        760,
+        104
+      ],
+      "geometry": "rect",
+      "text": "Na avicultura, o cuidado precisa virar rotina visível.",
+      "textPreview": "Na avicultura, o cuidado precisa virar rotina visível.",
+      "resolvedFontSize": 38,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 38,
+        "typeface": "Aptos Display",
+        "color": "#172019",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Na avicultura, o cuidado precisa virar rotina"
+          },
+          {
+            "index": 2,
+            "text": "visível."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Na avicultura, o cuidado precisa virar rotina visível.",
+          "lineSpacingPercent": 92000,
+          "resolvedTextStyle": {
+            "fontSize": 38,
+            "typeface": "Aptos Display",
+            "color": "#172019",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 0.92
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Na avicultura, o cuidado precisa virar rotina visível.",
+              "fontSize": 38,
+              "typeface": "Aptos Display",
+              "color": "#172019",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 0.92
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/na5w3utc",
+      "id": "5",
+      "bbox": [
+        74,
+        212,
+        680,
+        54
+      ],
+      "geometry": "rect",
+      "text": "Quando informação fica espalhada, a equipe perde tempo, o histórico se fragmenta e decisões importantes chegam tarde.",
+      "textPreview": "Quando informação fica espalhada, a equipe perde tempo, o histórico se fragmenta e decisões importantes chegam tarde.",
+      "resolvedFontSize": 19,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 19,
+        "typeface": "Aptos",
+        "color": "#657169",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Quando informação fica espalhada, a equipe perde tempo, o histórico se fragmenta e"
+          },
+          {
+            "index": 2,
+            "text": "decisões importantes chegam tarde."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Quando informação fica espalhada, a equipe perde tempo, o histórico se fragmenta e decisões importantes chegam tarde.",
+          "lineSpacingPercent": 112000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Aptos",
+            "color": "#657169",
+            "alignment": "left",
+            "lineSpacing": 1.12
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Quando informação fica espalhada, a equipe perde tempo, o histórico se fragmenta e decisões importantes chegam tarde.",
+              "fontSize": 19,
+              "typeface": "Aptos",
+              "color": "#657169",
+              "alignment": "left",
+              "lineSpacing": 1.12
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/obedczax",
+      "id": "6",
+      "bbox": [
+        74,
+        336,
+        520,
+        3
+      ],
+      "geometry": "rect",
+      "fillColor": "#1E5A3A",
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/pcne54bi",
+      "id": "7",
+      "bbox": [
+        74,
+        368,
+        250,
+        30
+      ],
+      "geometry": "rect",
+      "text": "O que está em jogo",
+      "textPreview": "O que está em jogo",
+      "resolvedFontSize": 23.81,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Aptos Display",
+        "color": "#1E5A3A",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.99,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "O que está em jogo"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "O que está em jogo",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 24,
+            "typeface": "Aptos Display",
+            "color": "#1E5A3A",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "O que está em jogo",
+              "fontSize": 24,
+              "typeface": "Aptos Display",
+              "color": "#1E5A3A",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/m5gfm9sv",
+      "id": "8",
+      "bbox": [
+        76,
+        416,
+        540,
+        126
+      ],
+      "geometry": "rect",
+      "text": "• saber qual lote está em cada etapa\n• manter o programa de vacinação sob controle\n• registrar o que aconteceu — e encontrar depois",
+      "textPreview": "• saber qual lote está em cada etapa | • manter o programa de vacinação sob controle | • registrar o que aconteceu — e encontrar depois",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 20,
+        "typeface": "Aptos",
+        "color": "#172019",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 3,
+        "lines": [
+          {
+            "index": 1,
+            "text": "• saber qual lote está em cada etapa"
+          },
+          {
+            "index": 2,
+            "text": "• manter o programa de vacinação sob controle"
+          },
+          {
+            "index": 3,
+            "text": "• registrar o que aconteceu — e encontrar depois"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "• saber qual lote está em cada etapa",
+          "lineSpacingPercent": 124000,
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "typeface": "Aptos",
+            "color": "#172019",
+            "alignment": "left",
+            "lineSpacing": 1.24
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "• saber qual lote está em cada etapa",
+              "fontSize": 20,
+              "typeface": "Aptos",
+              "color": "#172019",
+              "alignment": "left",
+              "lineSpacing": 1.24
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "• manter o programa de vacinação sob controle",
+          "lineSpacingPercent": 124000,
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "typeface": "Aptos",
+            "color": "#172019",
+            "alignment": "left",
+            "lineSpacing": 1.24
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "• manter o programa de vacinação sob controle",
+              "fontSize": 20,
+              "typeface": "Aptos",
+              "color": "#172019",
+              "alignment": "left",
+              "lineSpacing": 1.24
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 3,
+          "text": "• registrar o que aconteceu — e encontrar depois",
+          "lineSpacingPercent": 124000,
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "typeface": "Aptos",
+            "color": "#172019",
+            "alignment": "left",
+            "lineSpacing": 1.24
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "• registrar o que aconteceu — e encontrar depois",
+              "fontSize": 20,
+              "typeface": "Aptos",
+              "color": "#172019",
+              "alignment": "left",
+              "lineSpacing": 1.24
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/769wfetg",
+      "id": "9",
+      "bbox": [
+        76,
+        590,
+        560,
+        42
+      ],
+      "geometry": "rect",
+      "text": "Cuidar bem também é conseguir provar, acompanhar e agir.",
+      "textPreview": "Cuidar bem também é conseguir provar, acompanhar e agir.",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 20,
+        "typeface": "Aptos",
+        "color": "#1E5A3A",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Cuidar bem também é conseguir provar, acompanhar e agir."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Cuidar bem também é conseguir provar, acompanhar e agir.",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "typeface": "Aptos",
+            "color": "#1E5A3A",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Cuidar bem também é conseguir provar, acompanhar e agir.",
+              "fontSize": 20,
+              "typeface": "Aptos",
+              "color": "#1E5A3A",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/zmt8n6po",
+      "id": "10",
+      "bbox": [
+        72,
+        676,
+        110,
+        18
+      ],
+      "geometry": "rect",
+      "text": "IMMUHEN",
+      "textPreview": "IMMUHEN",
+      "resolvedFontSize": 11,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 11,
+        "typeface": "Aptos",
+        "color": "#1E5A3A",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "IMMUHEN"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "IMMUHEN",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 11,
+            "typeface": "Aptos",
+            "color": "#1E5A3A",
+            "bold": true,
+            "alignment": "left",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "IMMUHEN",
+              "fontSize": 11,
+              "typeface": "Aptos",
+              "color": "#1E5A3A",
+              "bold": true,
+              "alignment": "left",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/el07e183",
+      "id": "11",
+      "bbox": [
+        1170,
+        676,
+        38,
+        18
+      ],
+      "geometry": "rect",
+      "text": "02",
+      "textPreview": "02",
+      "resolvedFontSize": 11,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 11,
+        "typeface": "Aptos",
+        "color": "#657169",
+        "bold": true,
+        "alignment": "right",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "02"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "02",
+          "lineSpacingPercent": 105000,
+          "resolvedTextStyle": {
+            "fontSize": 11,
+            "typeface": "Aptos",
+            "color": "#657169",
+            "bold": true,
+            "alignment": "right",
+            "lineSpacing": 1.05
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "02",
+              "fontSize": 11,
+              "typeface": "Aptos",
+              "color": "#657169",
+              "bold": true,
+              "alignment": "right",
+              "lineSpacing": 1.05
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

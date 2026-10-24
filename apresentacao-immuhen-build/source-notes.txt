@@ -1,0 +1,3 @@
+Imagens: geradas internamente com ImageGen em 29/08/2026; sem logos, texto ou marcas de terceiros.
+Conteúdo: funcionalidades sintetizadas a partir do sistema ImmuHen no repositório local, incluindo lotes, aves, vacinas, estoque, programa, acompanhamento, solicitações, rastreabilidade e relatórios.
+Claims: não foram usados números, depoimentos ou resultados inventados.

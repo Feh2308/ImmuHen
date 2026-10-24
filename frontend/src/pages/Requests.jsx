@@ -1,0 +1,1501 @@
+import Sidebar from "../components/Sidebar";
+import { useEffect, useMemo, useState } from "react";
+import {
+  formatPeriod,
+  getStatusClass,
+  normalizeRequestStatus,
+  readJson,
+  writeJson,
+} from "../utils/vacitechStorage";
+import {
+  clearNotificationsApi,
+  confirmVaccinationCompletionApi,
+  confirmDoseRequestApi,
+  deleteNotificationApi,
+  fetchRequestsApi,
+  fetchSharedStateApi,
+  reviewVaccinationCompletionApi,
+  sendRequestMessageApi,
+} from "../services/vacitechApi";
+import { useVaccines } from "../context/VaccineContext";
+import { matchesSearchQuery } from "../utils/search";
+import { sortVaccinesByCode } from "../utils/vaccineSort";
+
+function parseQuantity(value) {
+  const parsed = Number(String(value || "0").replace(",", "."));
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatQuantity(value) {
+  const parsed = Number(value || 0);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return "";
+  }
+
+  return parsed.toLocaleString("pt-BR", {
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function getLaborCost(record) {
+  return parseQuantity(record?.programLaborCost ?? record?.laborCost ?? 0);
+}
+
+function getRequestTotalDoses(request) {
+  if (Array.isArray(request.actualVaccineUsages) && request.actualVaccineUsages.length > 0) {
+    return request.actualVaccineUsages.reduce((total, usage) => (
+      total + parseQuantity(usage.quantityUsed || usage.doses)
+    ), 0);
+  }
+
+  return (request.vaccineUsages || []).reduce((total, usage) => total + Number(usage.doses || 0), 0);
+}
+
+function getMapsLink(location) {
+  const value = String(location || "").trim();
+
+  if (!value) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+}
+
+function getRecordDateValue(record) {
+  return (
+    record?.vaccinationStartDate ||
+    record?.date ||
+    record?.programStartDate ||
+    "9999-12-31"
+  );
+}
+
+function getProgramDayValue(record) {
+  const parsed = Number(record?.programDay || 0);
+
+  return parsed > 0 ? parsed : 9999;
+}
+
+function sortVaccinationRecords(first, second) {
+  const firstDate = getRecordDateValue(first);
+  const secondDate = getRecordDateValue(second);
+
+  if (firstDate !== secondDate) {
+    return firstDate.localeCompare(secondDate);
+  }
+
+  const firstProgram = String(first?.programId || "");
+  const secondProgram = String(second?.programId || "");
+
+  if (firstProgram !== secondProgram) {
+    return firstProgram.localeCompare(secondProgram);
+  }
+
+  const dayDiff = getProgramDayValue(first) - getProgramDayValue(second);
+
+  if (dayDiff !== 0) {
+    return dayDiff;
+  }
+
+  return String(first?.farmName || first?.birdLotName || "").localeCompare(
+    String(second?.farmName || second?.birdLotName || ""),
+    "pt-BR"
+  );
+}
+
+function calculateBirdsPerFlask(flaskCc, dosePerBirdCc) {
+  const flask = parseQuantity(flaskCc);
+  const dose = parseQuantity(dosePerBirdCc);
+
+  if (flask <= 0 || dose <= 0) {
+    return 0;
+  }
+
+  return Math.floor(flask / dose);
+}
+
+function getUsageTechnicalText(item) {
+  const flaskCc = String(item.flaskCc || item.flasks || item.frascos || "").trim();
+  const dosePerBirdCc = String(item.dosePerBirdCc || "").trim();
+  const birdsPerFlask = Number(item.birdsPerFlask || calculateBirdsPerFlask(flaskCc, dosePerBirdCc) || 0);
+  const parts = [];
+
+  if (flaskCc) {
+    parts.push(`${flaskCc} cc/frasco`);
+  }
+
+  if (dosePerBirdCc) {
+    parts.push(`${dosePerBirdCc} cc/ave`);
+  }
+
+  if (birdsPerFlask > 0) {
+    parts.push(`${formatQuantity(birdsPerFlask)} aves/frasco`);
+  }
+
+  return parts.join(" | ");
+}
+
+function getCompletionDate(record) {
+  const value = record.systemConfirmedAtIso || record.archivedAtIso || record.completedAtIso || "";
+  const date = value ? new Date(value) : new Date(0);
+
+  return Number.isNaN(date.getTime()) ? new Date(0) : date;
+}
+
+function getRecordMaterials(record) {
+  const storedMaterials = Array.isArray(record.materialsUsed) && record.materialsUsed.length > 0
+    ? record.materialsUsed
+    : Array.isArray(record.actualVaccineUsages) && record.actualVaccineUsages.length > 0
+      ? record.actualVaccineUsages.map((item) => ({
+          ...item,
+          doses: parseQuantity(item.quantityUsed || item.doses),
+          source: "Uso real informado",
+        }))
+    : [
+        ...(Array.isArray(record.vaccineUsages) ? record.vaccineUsages : []),
+        ...(Array.isArray(record.doseRequest?.confirmedItems) ? record.doseRequest.confirmedItems : []),
+      ];
+
+  return storedMaterials
+    .map((item) => ({
+      id: item.id || item.vaccineId || item.codigo || item.vacina,
+      vaccineId: item.vaccineId || "",
+      vacina: item.vacina || item.name || "Vacina",
+      codigo: item.codigo || "",
+      doses: parseQuantity(item.doses),
+      technicalDetails: item.technicalDetails || getUsageTechnicalText(item),
+      flasks: item.technicalDetails || getUsageTechnicalText(item),
+      source: item.source || "",
+    }))
+    .filter((item) => item.vacina && item.doses > 0);
+}
+
+function getRecordSummary(record) {
+  if (record.completionSummary) {
+    return record.completionSummary;
+  }
+
+  const materials = getRecordMaterials(record);
+  const materialsText = materials.length > 0
+    ? materials.map((item) => `${item.vacina} (${item.doses} dose(s)${item.technicalDetails ? `, ${item.technicalDetails}` : ""})`).join(", ")
+    : "vacina nao informada";
+
+  return `${record.vaccinatorName || "Vacinador"} efetuou ${materialsText} na granja ${record.farmName || "Granja"}.`;
+}
+
+function shouldShowRequest(request) {
+  const status = normalizeRequestStatus(request.status);
+
+  return status !== "RECUSADA" && !request.systemConfirmedAtIso && !request.archivedAtIso;
+}
+
+function isAwaitingAdminConfirmation(status) {
+  const normalizedStatus = normalizeRequestStatus(status);
+
+  return normalizedStatus === "AGUARDANDO_CONFIRMACAO_ADMIN" || normalizedStatus === "CONCLUIDA";
+}
+
+function Requests() {
+  const {
+    vaccines,
+    calculateStock,
+    hydrateInventoryState,
+  } = useVaccines();
+  const [requests, setRequests] = useState(() => readJson("requests", []));
+  const [notifications, setNotifications] = useState(() => readJson("vaccinatorNotifications", []));
+  const [completedVaccinations, setCompletedVaccinations] = useState(() => readJson("completedVaccinations", []));
+  const [statusFilter, setStatusFilter] = useState("TODAS");
+  const [requestSearch, setRequestSearch] = useState("");
+  const [doseConfirmationForms, setDoseConfirmationForms] = useState({});
+  const [completionForms, setCompletionForms] = useState({});
+  const [messageDrafts, setMessageDrafts] = useState({});
+  const captureUrl = `${window.location.origin}/temperatura-vacina`;
+  const sortedVaccines = useMemo(() => sortVaccinesByCode(vaccines), [vaccines]);
+
+  async function loadRequests({ includeInventory = false, force = false } = {}) {
+    try {
+      const stateFields = includeInventory
+        ? [
+            "notifications",
+            "completedVaccinations",
+            "vaccines",
+            "entries",
+            "outputs",
+            "stockAlertLevels",
+            "vaccineEditRequests",
+            "entryEditRequests",
+            "vaccineAuditLog",
+          ]
+        : ["notifications", "completedVaccinations"];
+      const [apiRequests, state] = await Promise.all([
+        fetchRequestsApi(),
+        fetchSharedStateApi(stateFields, { force }),
+      ]);
+
+      setRequests(apiRequests);
+      setNotifications(state.notifications || []);
+      setCompletedVaccinations(state.completedVaccinations || []);
+
+      if (includeInventory) {
+        hydrateInventoryState(state);
+      }
+
+      writeJson("requests", apiRequests, { silent: true });
+      writeJson("vaccinatorNotifications", state.notifications || [], { silent: true });
+      writeJson("completedVaccinations", state.completedVaccinations || [], { silent: true });
+    } catch (error) {
+      console.log(error);
+      setRequests(readJson("requests", []));
+      setNotifications(readJson("vaccinatorNotifications", []));
+      setCompletedVaccinations(readJson("completedVaccinations", []));
+    }
+  }
+
+  useEffect(() => {
+    loadRequests({ includeInventory: true, force: true });
+
+    const refreshInterval = window.setInterval(() => {
+      if (!document.hidden) {
+        loadRequests({ force: true });
+      }
+    }, 30000);
+    const refreshOnFocus = () => loadRequests({ force: true });
+
+    window.addEventListener("focus", refreshOnFocus);
+    window.addEventListener("storage", refreshOnFocus);
+    window.addEventListener("vacitech-storage", refreshOnFocus);
+
+    return () => {
+      window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", refreshOnFocus);
+      window.removeEventListener("storage", refreshOnFocus);
+      window.removeEventListener("vacitech-storage", refreshOnFocus);
+    };
+  }, []);
+
+  const activeRequests = useMemo(() => (
+    requests
+      .filter(shouldShowRequest)
+      .sort(sortVaccinationRecords)
+  ), [requests]);
+
+  const counters = useMemo(() => {
+    return activeRequests.reduce(
+      (total, request) => {
+        const status = normalizeRequestStatus(request.status);
+
+        return {
+          ...total,
+          [status]: (total[status] || 0) + 1,
+        };
+      },
+      {
+        PENDENTE: 0,
+        CONFIRMADA: 0,
+        EM_ANDAMENTO: 0,
+        CONCLUIDA: 0,
+        AGUARDANDO_CONFIRMACAO_ADMIN: 0,
+        AJUSTE_SOLICITADO: 0,
+        RECUSADA: 0,
+      }
+    );
+  }, [activeRequests]);
+
+  const filteredRequests = activeRequests.filter((request) => {
+    const matchesSearch = matchesSearchQuery(request, requestSearch, [
+      getRecordSummary(request),
+      normalizeRequestStatus(request.status),
+      getRequestTotalDoses(request),
+      getRecordDateValue(request),
+      getCompletionDate(request).toLocaleDateString("pt-BR"),
+    ]);
+
+    if (!matchesSearch) {
+      return false;
+    }
+
+    if (statusFilter === "TODAS") {
+      return true;
+    }
+
+    if (statusFilter === "AGUARDANDO_CONFIRMACAO_ADMIN") {
+      return isAwaitingAdminConfirmation(request.status);
+    }
+
+    return normalizeRequestStatus(request.status) === statusFilter;
+  });
+
+  const visibleNotifications = notifications
+    .filter((notification) => (
+      notification.type === "DOSE_REQUEST" ||
+      notification.type === "TEMPERATURE_PHOTO" ||
+      notification.type === "VACCINATION_COMPLETED" ||
+      notification.type === "VACCINATION_AWAITING_ADMIN" ||
+      notification.type === "VACCINATION_ADJUSTMENT_REQUESTED" ||
+      notification.type === "VACCINATION_REJECTED" ||
+      notification.type === "VACCINATION_MESSAGE" ||
+      notification.type === "VACCINATION_POSTPONED" ||
+      notification.type === "VACCINE_CHANGED" ||
+      notification.type === "OVERDUE_VACCINATION" ||
+      notification.type === "LOW_STOCK"
+    ))
+    .filter((notification) => matchesSearchQuery(notification, requestSearch, [
+      getNotificationLabel(notification.type),
+      notification.createdAt,
+    ]))
+    .slice(-8)
+    .reverse();
+
+  const completedHistory = useMemo(() => {
+    return [...completedVaccinations]
+      .sort((first, second) => getCompletionDate(second).getTime() - getCompletionDate(first).getTime())
+      .slice(0, 12);
+  }, [completedVaccinations]);
+  const filteredCompletedHistory = useMemo(() => (
+    completedHistory.filter((record) => matchesSearchQuery(record, requestSearch, [
+      getRecordSummary(record),
+      getCompletionDate(record).toLocaleDateString("pt-BR"),
+      normalizeRequestStatus(record.status),
+    ]))
+  ), [completedHistory, requestSearch]);
+
+  function getNotificationLabel(type) {
+    if (type === "TEMPERATURE_PHOTO") {
+      return "Foto da temperatura";
+    }
+
+    if (type === "VACCINATION_COMPLETED") {
+      return "Vacinacao concluida";
+    }
+
+    if (type === "VACCINATION_AWAITING_ADMIN") {
+      return "Aguardando confirmacao";
+    }
+
+    if (type === "VACCINATION_ADJUSTMENT_REQUESTED") {
+      return "Ajuste solicitado";
+    }
+
+    if (type === "VACCINATION_REJECTED") {
+      return "Vacinacao rejeitada";
+    }
+
+    if (type === "VACCINATION_MESSAGE") {
+      return "Mensagem";
+    }
+
+    if (type === "OVERDUE_VACCINATION") {
+      return "Vacina atrasada";
+    }
+
+    if (type === "LOW_STOCK") {
+      return "Estoque baixo";
+    }
+
+    if (type === "VACCINATION_POSTPONED") {
+      return "Vacinacao adiada";
+    }
+
+    if (type === "VACCINE_CHANGED") {
+      return "Vacina alterada";
+    }
+
+    return "Pedido de doses";
+  }
+
+  async function deleteNotification(notificationId) {
+    const confirmed = window.confirm("Apagar esta notificacao?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const data = await deleteNotificationApi(notificationId);
+
+      setNotifications(data.notifications || []);
+      writeJson("vaccinatorNotifications", data.notifications || [], { silent: true });
+    } catch (error) {
+      alert(error.message || "Nao foi possivel apagar a notificacao.");
+    }
+  }
+
+  async function clearAllNotifications() {
+    const confirmed = window.confirm("Apagar todas as notificacoes desta granja?");
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const data = await clearNotificationsApi();
+
+      setNotifications(data.notifications || []);
+      writeJson("vaccinatorNotifications", data.notifications || [], { silent: true });
+    } catch (error) {
+      alert(error.message || "Nao foi possivel limpar as notificacoes.");
+    }
+  }
+
+  function getCaptureUrl(requestId) {
+    return `${captureUrl}?requestId=${encodeURIComponent(requestId)}`;
+  }
+
+  function copyCaptureUrl(requestId) {
+    const url = getCaptureUrl(requestId);
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url);
+      return;
+    }
+
+    window.prompt("Copie o link para abrir no celular:", url);
+  }
+
+  function getVaccine(id) {
+    return vaccines.find((vaccine) => String(vaccine.id) === String(id));
+  }
+
+  function getInitialDoseRows(request) {
+    const scheduledUsages = Array.isArray(request.vaccineUsages) && request.vaccineUsages.length > 0
+      ? request.vaccineUsages
+      : [{}];
+
+    return scheduledUsages.map((usage, index) => ({
+      id: `dose-${request.id}-${index}`,
+      vaccineId: usage.vaccineId || "",
+      doses: "",
+    }));
+  }
+
+  function getDoseRows(request) {
+    return doseConfirmationForms[request.id] || getInitialDoseRows(request);
+  }
+
+  function getCompletionForm(request) {
+    const materials = getRecordMaterials(request);
+
+    return completionForms[request.id] || {
+      completionTiming: "PONTUAL",
+      returnedVaccines: materials.map((material, index) => ({
+        id: `retorno-${request.id}-${index}`,
+        vaccineId: material.vaccineId || "",
+        vacina: material.vacina || "Vacina",
+        codigo: material.codigo || "",
+        doses: "",
+      })),
+    };
+  }
+
+  function updateCompletionTiming(request, value) {
+    const currentForm = getCompletionForm(request);
+
+    setCompletionForms({
+      ...completionForms,
+      [request.id]: {
+        ...currentForm,
+        completionTiming: value,
+      },
+    });
+  }
+
+  function updateReturnedDose(request, vaccineId, value) {
+    const currentForm = getCompletionForm(request);
+
+    setCompletionForms({
+      ...completionForms,
+      [request.id]: {
+        ...currentForm,
+        returnedVaccines: currentForm.returnedVaccines.map((item) => (
+          String(item.vaccineId) === String(vaccineId)
+            ? { ...item, doses: value }
+            : item
+        )),
+      },
+    });
+  }
+
+  function getReturnedVaccines(request) {
+    return getCompletionForm(request).returnedVaccines
+      .map((item) => ({
+        ...item,
+        doses: parseQuantity(item.doses),
+      }))
+      .filter((item) => item.vaccineId && item.doses > 0);
+  }
+
+  function updateDoseConfirmationRow(request, rowId, field, value) {
+    const currentRows = getDoseRows(request);
+
+    setDoseConfirmationForms({
+      ...doseConfirmationForms,
+      [request.id]: currentRows.map((row) => (
+        row.id === rowId
+          ? { ...row, [field]: value }
+          : row
+      )),
+    });
+  }
+
+  function addDoseConfirmationRow(request) {
+    setDoseConfirmationForms({
+      ...doseConfirmationForms,
+      [request.id]: [
+        ...getDoseRows(request),
+        { id: `dose-${request.id}-${Date.now()}`, vaccineId: "", doses: "" },
+      ],
+    });
+  }
+
+  function removeDoseConfirmationRow(request, rowId) {
+    const currentRows = getDoseRows(request);
+
+    setDoseConfirmationForms({
+      ...doseConfirmationForms,
+      [request.id]: currentRows.length === 1
+        ? [{ id: `dose-${request.id}-${Date.now()}`, vaccineId: "", doses: "" }]
+        : currentRows.filter((row) => row.id !== rowId),
+    });
+  }
+
+  function getConfirmedDoseItems(request) {
+    return getDoseRows(request)
+      .filter((row) => row.vaccineId || row.doses)
+      .map((row) => {
+        const vaccine = getVaccine(row.vaccineId);
+
+        return {
+          id: row.id,
+          vaccineId: row.vaccineId,
+          vacina: vaccine?.nome || "Vacina",
+          codigo: vaccine?.codigo || "-",
+          doses: parseQuantity(row.doses),
+        };
+      });
+  }
+
+  function getDoseStockError(items) {
+    const dosesByVaccine = items.reduce((total, item) => {
+      total[item.vaccineId] = (total[item.vaccineId] || 0) + item.doses;
+      return total;
+    }, {});
+
+    return Object.entries(dosesByVaccine).find(([vaccineId, doses]) => (
+      doses > calculateStock(vaccineId)
+    ));
+  }
+
+  async function confirmDoseRequest(request) {
+    const confirmedItems = getConfirmedDoseItems(request);
+
+    if (confirmedItems.length === 0) {
+      alert("Informe as vacinas e doses que serao liberadas.");
+      return;
+    }
+
+    if (confirmedItems.some((item) => !item.vaccineId || !item.doses || item.doses <= 0)) {
+      alert("Preencha vacina e doses maiores que zero em todas as linhas.");
+      return;
+    }
+
+    const invalidStock = getDoseStockError(confirmedItems);
+
+    if (invalidStock) {
+      const [vaccineId, doses] = invalidStock;
+      const vaccine = getVaccine(vaccineId);
+
+      alert(
+        `Doses maiores que o estoque para ${vaccine?.nome || "a vacina"}. Necessario: ${doses}, estoque: ${calculateStock(vaccineId)}.`
+      );
+      return;
+    }
+
+    const confirmed = window.confirm("Confirmar as doses solicitadas como liberadas para o vacinador? O estoque so sera baixado quando o vacinador informar a quantidade usada no app.");
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const data = await confirmDoseRequestApi(request.id, confirmedItems);
+
+      setRequests(data.requests || requests);
+      setNotifications(data.notifications || notifications);
+      writeJson("requests", data.requests || requests, { silent: true });
+      writeJson("vaccinatorNotifications", data.notifications || notifications, { silent: true });
+      setDoseConfirmationForms((currentForms) => {
+        const nextForms = { ...currentForms };
+        delete nextForms[request.id];
+        return nextForms;
+      });
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function confirmCompletion(request) {
+    const completionForm = getCompletionForm(request);
+    const returnedVaccines = getReturnedVaccines(request);
+    const confirmed = window.confirm(
+      "Confirmar esta vacinacao e baixar o estoque agora?\n\nO sistema vai descontar somente a quantidade usada informada pelo vacinador, gerar o comprovante em PDF e remover esta notificacao da lista."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const pdfBlob = await confirmVaccinationCompletionApi(request.id, {
+        completionTiming: completionForm.completionTiming,
+        returnedVaccines,
+      });
+
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+      link.href = pdfUrl;
+      link.download = `comprovante-vacinacao-${request.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(pdfUrl);
+      setCompletionForms((currentForms) => {
+        const nextForms = { ...currentForms };
+        delete nextForms[request.id];
+        return nextForms;
+      });
+      await loadRequests();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  async function reviewCompletion(request, action) {
+    const isAdjustment = action === "ADJUSTMENT";
+    const reason = window.prompt(
+      isAdjustment
+        ? "Qual ajuste o vacinador precisa fazer?"
+        : "Informe o motivo da rejeicao/devolucao sem baixa:"
+    );
+
+    if (reason === null) {
+      return;
+    }
+
+    if (!reason.trim()) {
+      alert("Informe um motivo para registrar a revisao.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      isAdjustment
+        ? "Enviar pedido de ajuste para o vacinador? O estoque nao sera alterado."
+        : "Rejeitar esta conclusao? O estoque nao sera alterado."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const data = await reviewVaccinationCompletionApi(request.id, {
+        action,
+        reason: reason.trim(),
+      });
+
+      setRequests(data.requests || requests);
+      setNotifications(data.notifications || notifications);
+      writeJson("requests", data.requests || requests, { silent: true });
+      writeJson("vaccinatorNotifications", data.notifications || notifications, { silent: true });
+      await loadRequests();
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  function updateMessageDraft(requestId, value) {
+    setMessageDrafts({
+      ...messageDrafts,
+      [requestId]: value,
+    });
+  }
+
+  async function sendRequestMessage(request) {
+    const message = String(messageDrafts[request.id] || "").trim();
+
+    if (!message) {
+      alert("Escreva uma mensagem para enviar ao vacinador.");
+      return;
+    }
+
+    try {
+      const data = await sendRequestMessageApi(request.id, message);
+
+      setRequests(data.requests || requests);
+      setNotifications(data.notifications || notifications);
+      setMessageDrafts((currentDrafts) => ({
+        ...currentDrafts,
+        [request.id]: "",
+      }));
+      writeJson("requests", data.requests || requests, { silent: true });
+      writeJson("vaccinatorNotifications", data.notifications || notifications, { silent: true });
+    } catch (error) {
+      alert(error.message);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
+      <Sidebar />
+
+      <main className="flex-1 p-6 md:p-8">
+        <section className="rounded-2xl border border-green-100 bg-white p-6 shadow-sm md:p-8">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-zinc-900 md:text-5xl">
+                Notificacoes
+              </h1>
+
+              <p className="mt-2 text-zinc-500">
+                Acompanhe notificacoes, pedidos e respostas dos vacinadores.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadRequests({ includeInventory: true, force: true })}
+              className="rounded-xl bg-green-600 px-5 py-3 font-bold text-white transition hover:bg-green-700"
+            >
+              Atualizar
+            </button>
+            <a
+              href="/temperatura-vacina"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-xl bg-green-50 px-5 py-3 font-bold text-green-700 transition hover:bg-green-100"
+            >
+              Ambiente foto temperatura
+            </a>
+          </div>
+        </section>
+
+        <section className="mt-6 grid gap-4 md:grid-cols-4">
+          <div className="rounded-2xl border border-yellow-100 bg-white p-5 shadow-sm">
+            <p className="text-sm font-bold uppercase tracking-wide text-yellow-700">
+              Pendentes
+            </p>
+            <p className="mt-3 text-4xl font-bold text-yellow-600">
+              {counters.PENDENTE}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-green-100 bg-white p-5 shadow-sm">
+            <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+              Confirmadas
+            </p>
+            <p className="mt-3 text-4xl font-bold text-green-600">
+              {counters.CONFIRMADA}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
+            <p className="text-sm font-bold uppercase tracking-wide text-blue-700">
+              Em andamento
+            </p>
+            <p className="mt-3 text-4xl font-bold text-blue-600">
+              {counters.EM_ANDAMENTO}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-purple-100 bg-white p-5 shadow-sm">
+            <p className="text-sm font-bold uppercase tracking-wide text-purple-700">
+              Aguardando conferencia
+            </p>
+            <p className="mt-3 text-4xl font-bold text-purple-600">
+              {(counters.AGUARDANDO_CONFIRMACAO_ADMIN || 0) + (counters.CONCLUIDA || 0)}
+            </p>
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-green-100 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap gap-3">
+            {["TODAS", "PENDENTE", "CONFIRMADA", "EM_ANDAMENTO", "AGUARDANDO_CONFIRMACAO_ADMIN", "AJUSTE_SOLICITADO", "CONCLUIDA"].map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setStatusFilter(status)}
+                className={`rounded-xl px-4 py-2 font-bold transition ${
+                  statusFilter === status
+                    ? "bg-green-600 text-white"
+                    : "bg-green-50 text-green-700 hover:bg-green-100"
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+
+          <input
+            type="search"
+            value={requestSearch}
+            onChange={(event) => setRequestSearch(event.target.value)}
+            placeholder="Buscar por granja, vacinador, lote, vacina, status, data, mensagem ou observacao"
+            className="mt-4 w-full rounded-2xl border border-green-100 bg-green-50 p-4 outline-none transition focus:border-green-500 focus:bg-white"
+          />
+
+          <p className="mt-3 text-sm font-bold text-green-700">
+            {filteredRequests.length} notificacao(oes) encontrada(s).
+          </p>
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-green-100 bg-white p-6 shadow-sm">
+          <h2 className="text-2xl font-bold text-zinc-900">
+            Notificacoes do ImmuHen Vacinador
+          </h2>
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={clearAllNotifications}
+              disabled={visibleNotifications.length === 0}
+              className="rounded-xl bg-red-50 px-4 py-2 font-bold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Limpar notificacoes
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            {visibleNotifications.length === 0 && (
+              <p className="text-zinc-500">
+                Nenhuma notificacao do vacinador.
+              </p>
+            )}
+
+            {visibleNotifications.map((notification) => (
+                <article
+                  key={notification.id}
+                  className="rounded-xl border border-green-100 bg-green-50 p-4"
+                >
+                  <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                    {getNotificationLabel(notification.type)}
+                  </p>
+                  <h3 className="mt-2 text-xl font-bold text-zinc-900">
+                    {notification.vaccinatorName || "Vacinador"}
+                  </h3>
+                  <p className="mt-2 whitespace-pre-wrap text-zinc-700">
+                    {notification.message}
+                  </p>
+                  <p className="mt-3 text-sm font-semibold text-green-700">
+                    {notification.createdAt}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => deleteNotification(notification.id)}
+                    className="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-bold text-red-600 transition hover:bg-red-50"
+                  >
+                    Apagar
+                  </button>
+                </article>
+              ))}
+          </div>
+        </section>
+
+        <section className="mt-6 grid gap-5">
+          {filteredRequests.length === 0 && (
+            <div className="rounded-2xl border border-green-100 bg-white p-6 text-zinc-500 shadow-sm">
+              Nenhuma notificacao encontrada.
+            </div>
+          )}
+
+          {filteredRequests.map((request) => {
+            const status = normalizeRequestStatus(request.status);
+            const doseRows = getDoseRows(request);
+            const doseRequestConfirmed = request.doseRequest?.status === "CONFIRMADO";
+
+            return (
+              <article
+                key={request.id}
+                className="rounded-2xl border border-green-100 bg-white p-6 shadow-sm"
+              >
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold text-zinc-900">
+                      {request.vaccinatorName || request.vaccinator || "Vacinador"}
+                    </h2>
+
+                    <p className="mt-2 text-zinc-500">
+                      Granja: {request.farmName || "Nao informada"}
+                    </p>
+
+                    <p className="mt-1 text-zinc-500">
+                      Proprietario: {request.farmOwner || request.responsible || "Nao informado"}
+                    </p>
+                  </div>
+
+                  <span
+                    className={`inline-flex rounded-full border px-4 py-2 text-sm font-bold ${getStatusClass(status)}`}
+                  >
+                    {status}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {!isAwaitingAdminConfirmation(status) && (
+                      <>
+                        <a
+                          href={getCaptureUrl(request.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-xl bg-green-50 px-4 py-2 text-sm font-bold text-green-700 transition hover:bg-green-100"
+                        >
+                          Foto temperatura
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => copyCaptureUrl(request.id)}
+                          className="rounded-xl bg-zinc-100 px-4 py-2 text-sm font-bold text-zinc-700 transition hover:bg-zinc-200"
+                        >
+                          Copiar link celular
+                        </button>
+                      </>
+                    )}
+
+                    {isAwaitingAdminConfirmation(status) && (
+                      <div className="grid gap-3 rounded-xl border border-purple-100 bg-purple-50 p-3">
+                        <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                          Execucao
+                          <select
+                            value={getCompletionForm(request).completionTiming}
+                            onChange={(event) => updateCompletionTiming(request, event.target.value)}
+                            className="rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                          >
+                            <option value="PONTUAL">Pontual</option>
+                            <option value="ATRASADA">Em atraso</option>
+                            <option value="ANTECIPADA">Antecipada</option>
+                          </select>
+                        </label>
+
+                        <p className="rounded-xl border border-green-100 bg-white p-3 text-sm font-semibold text-zinc-600">
+                          O vacinador enviou os dados para conferencia. O estoque so baixa quando voce confirmar aqui.
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={() => confirmCompletion(request)}
+                          className="rounded-xl bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700"
+                        >
+                          Confirmar e baixar estoque
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => reviewCompletion(request, "ADJUSTMENT")}
+                          className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-orange-700 ring-1 ring-orange-200 transition hover:bg-orange-50"
+                        >
+                          Solicitar ajuste
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => reviewCompletion(request, "REJECT")}
+                          className="rounded-xl bg-red-50 px-4 py-2 text-sm font-bold text-red-600 transition hover:bg-red-100"
+                        >
+                          Rejeitar sem baixar estoque
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Vacinacao
+                    </p>
+                    <p className="mt-2 font-bold text-zinc-900">
+                      {formatPeriod(
+                        request.vaccinationStartDate || request.date,
+                        request.vaccinationEndDate || request.date
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Debicagem
+                    </p>
+                    <p className="mt-2 font-bold text-zinc-900">
+                      {request.hasDebicagem === "SIM" ? "Sim" : "Nao"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Doses usadas
+                    </p>
+                    <p className="mt-2 font-bold text-zinc-900">
+                      {formatQuantity(getRequestTotalDoses(request))}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Mao de obra
+                    </p>
+                    <p className="mt-2 font-bold text-zinc-900">
+                      {formatCurrency(getLaborCost(request))}
+                    </p>
+                  </div>
+
+                </div>
+
+                {Array.isArray(request.actualVaccineUsages) && request.actualVaccineUsages.length > 0 && (
+                  <div className="mt-5 rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Uso real informado pelo vacinador
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {request.actualVaccineUsages.map((usage, index) => (
+                        <span
+                          key={`${usage.vaccineId}-${index}`}
+                          className="rounded-full bg-white px-3 py-1 text-sm font-bold text-zinc-700"
+                        >
+                          {usage.vacina || "Vacina"}: levou {formatQuantity(usage.quantityTaken) || 0}, usou {formatQuantity(usage.quantityUsed || usage.doses) || 0}, sobrou {formatQuantity(usage.quantityReturned) || 0}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {Array.isArray(request.vaccineUsages) && request.vaccineUsages.length > 0 && (
+                  <div className="mt-5 rounded-xl border border-green-100 bg-green-50 p-4">
+                    <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                      Vacinas do agendamento
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {request.vaccineUsages.map((usage, index) => (
+                        <span
+                          key={`${usage.vaccineId}-${index}`}
+                          className="rounded-full bg-white px-3 py-1 text-sm font-bold text-zinc-700"
+                        >
+                          {usage.vacina || "Vacina"}: {usage.doses} doses{getUsageTechnicalText(usage) ? ` | ${getUsageTechnicalText(usage)}` : ""}{usage.applicationMethod ? ` | ${usage.applicationMethod}` : ""}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(request.farmAddress || request.farmLocation || request.observations) && (
+                  <div className="mt-5 grid gap-4 md:grid-cols-3">
+                    <div className="rounded-xl border border-green-100 bg-white p-4">
+                      <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                        Endereco
+                      </p>
+                      <p className="mt-2 text-zinc-700">
+                        {request.farmAddress || "Nao informado"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-green-100 bg-white p-4">
+                      <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                        Localizacao
+                      </p>
+                      {request.farmLocation ? (
+                        <a
+                          href={getMapsLink(request.farmLocation)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 block break-words font-bold text-green-700 underline decoration-green-300 underline-offset-4"
+                        >
+                          Abrir no Google Maps
+                        </a>
+                      ) : (
+                        <p className="mt-2 break-words text-zinc-700">Nao informada</p>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-green-100 bg-white p-4">
+                      <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                        Observacoes
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap text-zinc-700">
+                        {request.observations || "Nenhuma observacao"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {request.answeredAt && (
+                  <p className="mt-4 text-sm text-zinc-500">
+                    Respondida em {request.answeredAt}
+                  </p>
+                )}
+
+                {request.startedAt && (
+                  <p className="mt-4 text-sm text-blue-600">
+                    Iniciada em {request.startedAt}
+                  </p>
+                )}
+
+                {request.postponement && (
+                  <p className="mt-4 text-sm font-semibold text-yellow-700">
+                    Adiada por {request.postponement.vaccinatorName || "vacinador"} para {formatPeriod(request.postponement.vaccinationStartDate, request.postponement.vaccinationEndDate)}
+                    {request.postponement.reason ? ` - ${request.postponement.reason}` : ""}
+                  </p>
+                )}
+
+                {request.completedAt && (
+                  <p className="mt-4 text-sm text-zinc-700">
+                    Concluida em {request.completedAt}
+                  </p>
+                )}
+
+                {(request.temperaturePhoto || request.temperatureNotes || request.temperatureStatus || request.doseRequest) && (
+                  <div className="mt-5 grid gap-4 md:grid-cols-3">
+                    {request.temperaturePhoto && (
+                      <div className="rounded-xl border border-green-100 bg-white p-4">
+                        <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                          Foto temperatura
+                        </p>
+                        <img
+                          src={request.temperaturePhoto}
+                          alt="Temperatura da vacina"
+                          className="mt-3 max-h-56 rounded-xl border border-green-100 object-contain"
+                        />
+                        <p className="mt-2 text-sm text-zinc-500">
+                          {request.temperaturePhotoUploadedAt}
+                        </p>
+                        {request.temperaturePhotoSource && (
+                          <p className="mt-1 text-sm font-semibold text-green-700">
+                            Origem: {request.temperaturePhotoSource === "GRANJA" ? "Granja" : "Vacinador"}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {request.temperatureStatus && (
+                      <div className="rounded-xl border border-green-100 bg-white p-4">
+                        <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                          Status temperatura
+                        </p>
+                        <p className="mt-2 font-bold text-zinc-900">
+                          {request.temperatureStatus}
+                        </p>
+                      </div>
+                    )}
+
+                    {request.temperatureNotes && (
+                      <div className="rounded-xl border border-green-100 bg-white p-4">
+                        <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                          Observacao temperatura
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-zinc-700">
+                          {request.temperatureNotes}
+                        </p>
+                      </div>
+                    )}
+
+                    {request.doseRequest && (
+                      <div className="rounded-xl border border-green-100 bg-white p-4 md:col-span-3">
+                        <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                          Doses solicitadas
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-zinc-700">
+                          {request.doseRequest.message}
+                        </p>
+                        <p className="mt-2 text-sm text-zinc-500">
+                          {request.doseRequest.requestedAt}
+                        </p>
+
+                        {doseRequestConfirmed ? (
+                          <div className="mt-4 rounded-xl border border-green-100 bg-green-50 p-4">
+                            <p className="font-bold text-green-700">
+                              Doses liberadas em {request.doseRequest.confirmedAt}
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {(request.doseRequest.confirmedItems || []).map((item, index) => (
+                                <span
+                                  key={`${item.vaccineId}-${index}`}
+                                  className="rounded-full bg-white px-3 py-1 text-sm font-bold text-zinc-700"
+                                >
+                                  {item.vacina || "Vacina"}: {item.doses} doses{item.technicalDetails ? ` | ${item.technicalDetails}` : ""}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-4 grid gap-3 rounded-xl border border-green-100 bg-green-50 p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                              <p className="font-bold text-zinc-900">
+                                Confirmar doses liberadas
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => addDoseConfirmationRow(request)}
+                                className="rounded-xl bg-white px-4 py-2 font-bold text-green-700 transition hover:bg-green-100"
+                              >
+                                Adicionar vacina
+                              </button>
+                            </div>
+
+                            {doseRows.map((row) => (
+                              <div
+                                key={row.id}
+                                className="grid gap-3 md:grid-cols-[minmax(0,1fr)_150px_120px]"
+                              >
+                                <select
+                                  value={row.vaccineId}
+                                  onChange={(event) => updateDoseConfirmationRow(request, row.id, "vaccineId", event.target.value)}
+                                  className="rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                                >
+                                  <option value="">
+                                    Selecione a vacina
+                                  </option>
+                                  {sortedVaccines.map((vaccine) => (
+                                    <option key={vaccine.id} value={vaccine.id}>
+                                      {vaccine.nome} | estoque: {calculateStock(vaccine.id)}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={row.doses}
+                                  onChange={(event) => updateDoseConfirmationRow(request, row.id, "doses", event.target.value)}
+                                  placeholder="Doses"
+                                  className="rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                                />
+
+                                <button
+                                  type="button"
+                                  onClick={() => removeDoseConfirmationRow(request, row.id)}
+                                  className="rounded-xl bg-red-50 px-4 py-2 font-bold text-red-600 transition hover:bg-red-100"
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                            ))}
+
+                            <button
+                              type="button"
+                              onClick={() => confirmDoseRequest(request)}
+                              className="w-fit rounded-xl bg-green-600 px-5 py-3 font-bold text-white transition hover:bg-green-700"
+                            >
+                              Confirmar doses
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-5 rounded-xl border border-green-100 bg-green-50 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                    <div>
+                      <p className="text-sm font-bold uppercase tracking-wide text-green-700">
+                        Chat da vacinacao
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        Mensagens ficam registradas neste pedido.
+                      </p>
+                    </div>
+                    <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-bold text-green-700">
+                      {(request.messages || []).length} mensagem(ns)
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid gap-2">
+                    {(request.messages || []).length === 0 && (
+                      <p className="rounded-xl bg-white p-3 text-sm text-zinc-500">
+                        Nenhuma mensagem nesta vacinacao.
+                      </p>
+                    )}
+
+                    {(request.messages || []).map((message) => (
+                      <div
+                        key={message.id}
+                        className="rounded-xl bg-white p-3"
+                      >
+                        <p className="text-sm font-bold text-zinc-900">
+                          {message.senderName || (message.senderType === "ADMIN" ? "Administrador" : "Vacinador")}
+                          <span className="ml-2 font-semibold text-zinc-400">
+                            {message.createdAt}
+                          </span>
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-zinc-700">
+                          {message.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <label className="grid gap-2 text-sm font-semibold text-zinc-700">
+                      Mensagem para o vacinador
+                      <textarea
+                        value={messageDrafts[request.id] || ""}
+                        onChange={(event) => updateMessageDraft(request.id, event.target.value)}
+                        placeholder="Escreva uma orientacao ou pedido de ajuste..."
+                        rows={3}
+                        className="resize-y rounded-xl border border-green-100 bg-white p-3 text-zinc-900 outline-none transition focus:border-green-500"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => sendRequestMessage(request)}
+                      className="rounded-xl bg-green-600 px-5 py-3 font-bold text-white transition hover:bg-green-700"
+                    >
+                      Enviar mensagem
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-green-100 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-zinc-900">
+                Historico de vacinacoes confirmadas
+              </h2>
+              <p className="mt-1 text-zinc-500">
+                Registros salvos apos a granja confirmar que a vacinacao foi realizada.
+              </p>
+            </div>
+
+            <span className="w-fit rounded-full bg-green-50 px-4 py-2 text-sm font-bold text-green-700">
+              {filteredCompletedHistory.length} de {completedVaccinations.length} salvo(s)
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-4">
+            {completedHistory.length === 0 && (
+              <p className="text-zinc-500">
+                Nenhuma vacinacao confirmada pela granja ainda.
+              </p>
+            )}
+
+            {completedHistory.length > 0 && filteredCompletedHistory.length === 0 && (
+              <p className="text-zinc-500">
+                Nenhum historico encontrado para a busca informada.
+              </p>
+            )}
+
+            {filteredCompletedHistory.map((record) => {
+              const materials = getRecordMaterials(record);
+
+              return (
+                <article
+                  key={`${record.id}-${record.systemConfirmedAtIso || record.archivedAtIso || record.completedAtIso || ""}`}
+                  className="rounded-xl border border-green-100 bg-green-50 p-4"
+                >
+                  <p className="text-lg font-bold text-zinc-900">
+                    {getRecordSummary(record)}
+                  </p>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div className="rounded-xl border border-green-100 bg-white p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Periodo
+                      </p>
+                      <p className="mt-2 font-semibold text-zinc-700">
+                        {formatPeriod(
+                          record.vaccinationStartDate || record.date,
+                          record.vaccinationEndDate || record.date
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-green-100 bg-white p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Confirmada pela granja
+                      </p>
+                      <p className="mt-2 font-semibold text-zinc-700">
+                        {record.systemConfirmedAt || record.archivedAt || "-"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-green-100 bg-white p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Vacinador
+                      </p>
+                      <p className="mt-2 font-semibold text-zinc-700">
+                        {record.vaccinatorName || "Vacinador"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {materials.length > 0 && (
+                    <div className="mt-4 rounded-xl border border-green-100 bg-white p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                        Materiais utilizados
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {materials.map((material, index) => (
+                          <span
+                            key={`${material.id}-${index}`}
+                            className="rounded-full bg-green-50 px-3 py-1 text-sm font-bold text-zinc-700"
+                          >
+                            {material.vacina}: {material.doses} doses{material.technicalDetails ? ` | ${material.technicalDetails}` : ""}{material.source ? ` | ${material.source}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(record.temperaturePhoto || record.temperatureNotes || record.temperatureStatus) && (
+                    <div className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_160px]">
+                      {record.temperaturePhoto && (
+                        <img
+                          src={record.temperaturePhoto}
+                          alt="Temperatura da vacina"
+                          className="max-h-44 rounded-xl border border-green-100 bg-white object-contain p-2"
+                        />
+                      )}
+                      {record.temperatureNotes && (
+                        <div className="rounded-xl border border-green-100 bg-white p-3">
+                          <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                            Observacao temperatura
+                          </p>
+                          <p className="mt-2 whitespace-pre-wrap text-zinc-700">
+                            {record.temperatureNotes}
+                          </p>
+                        </div>
+                      )}
+                      {record.temperatureStatus && (
+                        <div className="rounded-xl border border-green-100 bg-white p-3">
+                          <p className="text-xs font-bold uppercase tracking-wide text-green-700">
+                            Status
+                          </p>
+                          <p className="mt-2 font-bold text-zinc-900">
+                            {record.temperatureStatus}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+export default Requests;

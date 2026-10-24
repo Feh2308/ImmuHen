@@ -1,0 +1,18 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+deploy/env/*.env
+backend/vacitech-data.json
+backend/dev.db
+.codex-test/
+backend/.codex-test/
+backups/
+tmp/
+
+# Arquivos locais de distribuição e cópias de segurança
+backend-backup/
+*.tar.gz
+*.zip
+*.log

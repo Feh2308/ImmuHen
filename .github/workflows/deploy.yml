@@ -1,0 +1,182 @@
+name: Deploy ImmuHen VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: immuhen-vps-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Hostinger VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -Eeuo pipefail
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/immuhen_deploy_key
+          chmod 600 ~/.ssh/immuhen_deploy_key
+
+          ssh-keyscan -p "${VPS_PORT:-22}" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy application
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -Eeuo pipefail
+
+          ssh -i ~/.ssh/immuhen_deploy_key \
+            -p "${VPS_PORT:-22}" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+
+          PROJECT_DIR="/opt/immuhen/current"
+          BACKEND_DIR="$PROJECT_DIR/backend"
+          FRONTEND_DIR="$PROJECT_DIR/frontend"
+          VACCINATOR_DIR="$PROJECT_DIR/vaccinator-app"
+          FRONTEND_PUBLIC_DIR="/var/www/immuhen/frontend"
+          VACCINATOR_PUBLIC_DIR="/var/www/immuhen/vaccinator"
+          RELEASES_DIR="/var/www/immuhen/releases"
+          BACKUP_ID="$(date +%Y%m%d%H%M%S)"
+          BACKUP_DIR="$RELEASES_DIR/$BACKUP_ID"
+          PM2_APP="immuhen-api"
+          PREVIOUS_SHA=""
+
+          log() {
+            printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+          }
+
+          run_npm_install() {
+            if [ -f package-lock.json ]; then
+              npm ci
+            else
+              npm install
+            fi
+          }
+
+          rollback() {
+            local exit_code=$?
+            set +e
+
+            log "Falha no deploy. Iniciando rollback basico..."
+
+            if [ -n "$PREVIOUS_SHA" ] && [ -d "$PROJECT_DIR/.git" ]; then
+              cd "$PROJECT_DIR"
+              git checkout --force "$PREVIOUS_SHA"
+            fi
+
+            if [ -d "$BACKUP_DIR/frontend" ]; then
+              mkdir -p "$FRONTEND_PUBLIC_DIR"
+              rsync -a --delete "$BACKUP_DIR/frontend/" "$FRONTEND_PUBLIC_DIR/"
+            fi
+
+            if [ -d "$BACKUP_DIR/vaccinator" ]; then
+              mkdir -p "$VACCINATOR_PUBLIC_DIR"
+              rsync -a --delete "$BACKUP_DIR/vaccinator/" "$VACCINATOR_PUBLIC_DIR/"
+            fi
+
+            pm2 restart "$PM2_APP"
+            sudo nginx -t && sudo systemctl reload nginx
+
+            log "Rollback finalizado. Verifique os logs da VPS."
+            exit "$exit_code"
+          }
+
+          trap rollback ERR
+
+          log "Validando diretorio do projeto"
+          cd "$PROJECT_DIR"
+          PREVIOUS_SHA="$(git rev-parse HEAD)"
+
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            log "Deploy cancelado: existem alteracoes locais nao commitadas em $PROJECT_DIR."
+            git status --short
+            exit 1
+          fi
+
+          log "Criando backup dos arquivos publicados"
+          mkdir -p "$BACKUP_DIR"
+
+          if [ -d "$FRONTEND_PUBLIC_DIR" ]; then
+            mkdir -p "$BACKUP_DIR/frontend"
+            rsync -a --delete "$FRONTEND_PUBLIC_DIR/" "$BACKUP_DIR/frontend/"
+          fi
+
+          if [ -d "$VACCINATOR_PUBLIC_DIR" ]; then
+            mkdir -p "$BACKUP_DIR/vaccinator"
+            rsync -a --delete "$VACCINATOR_PUBLIC_DIR/" "$BACKUP_DIR/vaccinator/"
+          fi
+
+          log "Atualizando codigo"
+          git checkout main
+          git pull --ff-only origin main
+
+          log "Instalando dependencias do backend"
+          cd "$BACKEND_DIR"
+          run_npm_install
+
+          log "Gerando Prisma Client"
+          npx prisma generate
+
+          log "Instalando dependencias e gerando build do frontend"
+          cd "$FRONTEND_DIR"
+          run_npm_install
+          npm run build
+
+          log "Instalando dependencias e gerando build do app do vacinador"
+          cd "$VACCINATOR_DIR"
+          run_npm_install
+          VITE_BASE_PATH="${VITE_BASE_PATH:-/vacinador/}" npm run build
+
+          log "Publicando frontend"
+          mkdir -p "$FRONTEND_PUBLIC_DIR"
+          rsync -a --delete "$FRONTEND_DIR/dist/" "$FRONTEND_PUBLIC_DIR/"
+
+          log "Publicando app do vacinador"
+          mkdir -p "$VACCINATOR_PUBLIC_DIR"
+          rsync -a --delete "$VACCINATOR_DIR/dist/" "$VACCINATOR_PUBLIC_DIR/"
+
+          log "Reiniciando backend PM2"
+          pm2 restart "$PM2_APP" --update-env
+          pm2 save
+
+          log "Validando e recarregando Nginx"
+          sudo nginx -t
+          sudo systemctl reload nginx
+
+          log "Validacao final"
+          curl -fsS --max-time 15 http://127.0.0.1:3001/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"deploy-healthcheck@immuhen.local","password":"invalid"}' \
+            >/tmp/immuhen-login-check.txt || true
+
+          if ! grep -Eq 'Email|senha|invalid|success|false' /tmp/immuhen-login-check.txt; then
+            log "Aviso: healthcheck do backend nao retornou corpo esperado. Conferir manualmente."
+          fi
+
+          test -f "$FRONTEND_PUBLIC_DIR/index.html"
+          test -f "$VACCINATOR_PUBLIC_DIR/index.html"
+
+          trap - ERR
+          log "Deploy concluido com sucesso."
+          REMOTE

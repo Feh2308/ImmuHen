@@ -1,0 +1,120 @@
+{"kind":"deck","id":"pr/q2786y","name":"Deck"}
+{"kind":"layout","layoutId":"a9009363-d9ab-407f-8d46-e0a0fd7e6c44","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"1c6f917d-a1cb-4274-985f-ea40fab47bd1","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/h4rlpm","slide":1,"title":"IMMU","textShapes":7}
+{"kind":"shape","id":"sh/udkzml8j","slide":1,"bbox":[0,0,600,720]}
+{"kind":"textbox","id":"sh/vet0vqp4","slide":1,"text":"IMMU","textPreview":"IMMU","textChars":4,"textLines":1,"bbox":[72,78,250,68]}
+{"kind":"textbox","id":"sh/8r2hkbqt","slide":1,"text":"HEN","textPreview":"HEN","textChars":3,"textLines":1,"bbox":[310,78,170,68]}
+{"kind":"shape","id":"sh/tsbitg7e","slide":1,"bbox":[74,176,120,4]}
+{"kind":"textbox","id":"sh/6pkzi18n","slide":1,"text":"Gestão sanitária avícola\ncom clareza no dia a dia.","textPreview":"Gestão sanitária avícola | com clareza no dia a dia.","textChars":50,"textLines":2,"bbox":[72,224,460,150]}
+{"kind":"textbox","id":"sh/7qt0r6p8","slide":1,"text":"A rotina da granja organizada em um só lugar — do lote ao histórico de vacinação.","textPreview":"A rotina da granja organizada em um só lugar — do lote ao histórico de vacinação.","textChars":81,"textLines":1,"bbox":[76,414,420,74]}
+{"kind":"textbox","id":"sh/sn61wvqx","slide":1,"text":"APRESENTAÇÃO DO SISTEMA","textPreview":"APRESENTAÇÃO DO SISTEMA","textChars":23,"textLines":1,"bbox":[76,608,300,20]}
+{"kind":"textbox","id":"sh/dofi507i","slide":1,"text":"IMMUHEN","textPreview":"IMMUHEN","textChars":7,"textLines":1,"bbox":[72,676,110,18]}
+{"kind":"textbox","id":"sh/5c76x07i","slide":1,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[1170,676,38,18]}
+{"kind":"image","id":"im/w729wr2h","slide":1,"name":"","alt":"Galinhas saudáveis em aviário iluminado","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/h4rlpm","slide":1,"text":"[Sources]\nImagem gerada internamente com ImageGen para esta apresentação.\n\nMensagem: o ImmuHen transforma a rotina sanitária em uma operação mais clara e acompanhável."}
+{"kind":"slide","id":"sl/yfr3bc","slide":2,"title":"O DESAFIO","textShapes":8}
+{"kind":"shape","id":"sh/cfyxgzat","slide":2,"bbox":[742,0,538,720]}
+{"kind":"textbox","id":"sh/xg7e94be","slide":2,"text":"O DESAFIO","textPreview":"O DESAFIO","textChars":9,"textLines":1,"bbox":[72,54,440,22]}
+{"kind":"textbox","id":"sh/29wvapsr","slide":2,"text":"Na avicultura, o cuidado precisa virar rotina visível.","textPreview":"Na avicultura, o cuidado precisa virar rotina visível.","textChars":54,"textLines":1,"bbox":[72,94,760,104]}
+{"kind":"textbox","id":"sh/na5w3utc","slide":2,"text":"Quando informação fica espalhada, a equipe perde tempo, o histórico se fragmenta e decisões importantes chegam tarde.","textPreview":"Quando informação fica espalhada, a equipe perde tempo, o histórico se fragmenta e decisões importantes chegam tarde.","textChars":117,"textLines":1,"bbox":[74,212,680,54]}
+{"kind":"shape","id":"sh/obedczax","slide":2,"bbox":[74,336,520,3]}
+{"kind":"textbox","id":"sh/pcne54bi","slide":2,"text":"O que está em jogo","textPreview":"O que está em jogo","textChars":18,"textLines":1,"bbox":[74,368,250,30]}
+{"kind":"textbox","id":"sh/m5gfm9sv","slide":2,"text":"• saber qual lote está em cada etapa\n• manter o programa de vacinação sob controle\n• registrar o que aconteceu — e encontrar depois","textPreview":"• saber qual lote está em cada etapa | • manter o programa de vacinação sob controle | • registrar o que aconteceu — e encontrar depois","textChars":131,"textLines":3,"bbox":[76,416,540,126]}
+{"kind":"textbox","id":"sh/769wfetg","slide":2,"text":"Cuidar bem também é conseguir provar, acompanhar e agir.","textPreview":"Cuidar bem também é conseguir provar, acompanhar e agir.","textChars":56,"textLines":1,"bbox":[76,590,560,42]}
+{"kind":"textbox","id":"sh/zmt8n6po","slide":2,"text":"IMMUHEN","textPreview":"IMMUHEN","textChars":7,"textLines":1,"bbox":[72,676,110,18]}
+{"kind":"textbox","id":"sh/el07e183","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1170,676,38,18]}
+{"kind":"image","id":"im/m9sve94n","slide":2,"name":"","alt":"Pintinho saudável em ambiente limpo","bbox":[742,0,538,720]}
+{"kind":"notes","id":"nt/yfr3bc","slide":2,"text":"[Sources]\nImagem gerada internamente com ImageGen para esta apresentação.\n\nAs dores descritas são uma síntese de rotina operacional, sem números inventados."}
+{"kind":"slide","id":"sl/4icoj5","slide":3,"title":"O SISTEMA","textShapes":18}
+{"kind":"textbox","id":"sh/e5wny50b","slide":3,"text":"O SISTEMA","textPreview":"O SISTEMA","textChars":9,"textLines":1,"bbox":[72,54,440,22]}
+{"kind":"textbox","id":"sh/1sn6tkz2","slide":3,"text":"ImmuHen é o centro de controle da vacinação da granja.","textPreview":"ImmuHen é o centro de controle da vacinação da granja.","textChars":54,"textLines":1,"bbox":[72,94,760,104]}
+{"kind":"textbox","id":"sh/gre50fih","slide":3,"text":"Uma plataforma para reunir planejamento, execução e acompanhamento em uma linguagem simples para a operação.","textPreview":"Uma plataforma para reunir planejamento, execução e acompanhamento em uma linguagem simples para a operação.","textChars":108,"textLines":1,"bbox":[74,212,680,54]}
+{"kind":"shape","id":"sh/r2l4nqh0","slide":3,"bbox":[102,360,1056,2]}
+{"kind":"shape","id":"sh/61cnul0f","slide":3,"bbox":[84,345,42,42]}
+{"kind":"textbox","id":"sh/t436p0z6","slide":3,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[84,355,42,18]}
+{"kind":"textbox","id":"sh/s3u5wvil","slide":3,"text":"Planejar","textPreview":"Planejar","textChars":8,"textLines":1,"bbox":[84,416,220,32]}
+{"kind":"textbox","id":"sh/bypozuh4","slide":3,"text":"Programas e calendário de vacinação por lote.","textPreview":"Programas e calendário de vacinação por lote.","textChars":45,"textLines":1,"bbox":[84,460,220,76]}
+{"kind":"shape","id":"sh/qxgn6p0j","slide":3,"bbox":[360,345,42,42]}
+{"kind":"textbox","id":"sh/gb618bm5","slide":3,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[360,355,42,18]}
+{"kind":"textbox","id":"sh/1cfi1gna","slide":3,"text":"Registrar","textPreview":"Registrar","textChars":9,"textLines":1,"bbox":[360,416,220,32]}
+{"kind":"textbox","id":"sh/u94z6l4z","slide":3,"text":"Aplicações, responsáveis, doses e observações.","textPreview":"Aplicações, responsáveis, doses e observações.","textChars":46,"textLines":1,"bbox":[360,460,220,76]}
+{"kind":"shape","id":"sh/fad0zq5k","slide":3,"bbox":[636,345,42,42]}
+{"kind":"textbox","id":"sh/s7mh4bmt","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[636,355,42,18]}
+{"kind":"textbox","id":"sh/t8vixgne","slide":3,"text":"Acompanhar","textPreview":"Acompanhar","textChars":10,"textLines":1,"bbox":[636,416,220,32]}
+{"kind":"textbox","id":"sh/654z21on","slide":3,"text":"Status, solicitações, alertas e próximos passos.","textPreview":"Status, solicitações, alertas e próximos passos.","textChars":48,"textLines":1,"bbox":[636,460,220,76]}
+{"kind":"shape","id":"sh/76d0v658","slide":3,"bbox":[912,345,42,42]}
+{"kind":"textbox","id":"sh/kjmh0r6x","slide":3,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[912,355,42,18]}
+{"kind":"textbox","id":"sh/5kvitwni","slide":3,"text":"Rastrear","textPreview":"Rastrear","textChars":8,"textLines":1,"bbox":[912,416,220,32]}
+{"kind":"textbox","id":"sh/l0nyxsf6","slide":3,"text":"Histórico organizado para consultar quando precisar.","textPreview":"Histórico organizado para consultar quando precisar.","textChars":52,"textLines":1,"bbox":[912,460,220,76]}
+{"kind":"shape","id":"sh/kzexonyl","slide":3,"bbox":[72,596,1136,44]}
+{"kind":"textbox","id":"sh/zylgvix0","slide":3,"text":"Menos improviso na rotina. Mais contexto para cada decisão.","textPreview":"Menos improviso na rotina. Mais contexto para cada decisão.","textChars":59,"textLines":1,"bbox":[94,608,1090,20]}
+{"kind":"textbox","id":"sh/ydcfmdgf","slide":3,"text":"IMMUHEN","textPreview":"IMMUHEN","textChars":7,"textLines":1,"bbox":[72,676,110,18]}
+{"kind":"textbox","id":"sh/xc3ytsfu","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1170,676,38,18]}
+{"kind":"notes","id":"nt/4icoj5","slide":3,"text":"[Sources]\nFuncionalidades sintetizadas a partir do sistema ImmuHen no repositório local: programa, vacinas, acompanhamento, solicitações e rastreabilidade."}
+{"kind":"slide","id":"sl/smq730","slide":4,"title":"O QUE ENTRA NA ROTINA","textShapes":16}
+{"kind":"textbox","id":"sh/j294r2ps","slide":4,"text":"O QUE ENTRA NA ROTINA","textPreview":"O QUE ENTRA NA ROTINA","textChars":21,"textLines":1,"bbox":[72,54,440,22]}
+{"kind":"textbox","id":"sh/4n2l07qd","slide":4,"text":"Do lote ao histórico: tudo no mesmo lugar.","textPreview":"Do lote ao histórico: tudo no mesmo lugar.","textChars":42,"textLines":1,"bbox":[72,94,760,104]}
+{"kind":"textbox","id":"sh/5obmtc7y","slide":4,"text":"O ImmuHen conecta as partes que normalmente ficam separadas entre planilhas, mensagens e anotações.","textPreview":"O ImmuHen conecta as partes que normalmente ficam separadas entre planilhas, mensagens e anotações.","textChars":99,"textLines":1,"bbox":[74,212,680,54]}
+{"kind":"textbox","id":"sh/ux03ud8b","slide":4,"text":"Lotes e aves","textPreview":"Lotes e aves","textChars":12,"textLines":1,"bbox":[82,318,250,26]}
+{"kind":"textbox","id":"sh/vy9knipw","slide":4,"text":"cadastro, alojamento, idade e situação de cada lote","textPreview":"cadastro, alojamento, idade e situação de cada lote","textChars":51,"textLines":1,"bbox":[370,320,710,26]}
+{"kind":"shape","id":"sh/wzilwnqh","slide":4,"bbox":[82,360,1016,1]}
+{"kind":"textbox","id":"sh/h0rmps72","slide":4,"text":"Vacinas e estoque","textPreview":"Vacinas e estoque","textChars":17,"textLines":1,"bbox":[82,380,250,26]}
+{"kind":"textbox","id":"sh/etk36h8f","slide":4,"text":"entradas, saídas, consumo previsto e níveis de atenção","textPreview":"entradas, saídas, consumo previsto e níveis de atenção","textChars":54,"textLines":1,"bbox":[370,382,710,26]}
+{"kind":"shape","id":"sh/fut4zmp0","slide":4,"bbox":[82,422,1016,1]}
+{"kind":"textbox","id":"sh/jqlojet0","slide":4,"text":"Programa","textPreview":"Programa","textChars":8,"textLines":1,"bbox":[82,442,250,26]}
+{"kind":"textbox","id":"sh/ipc7q9cf","slide":4,"text":"planejamento por etapas e visualização do que vem a seguir","textPreview":"planejamento por etapas e visualização do que vem a seguir","textChars":58,"textLines":1,"bbox":[370,444,710,26]}
+{"kind":"shape","id":"sh/5s36lobq","slide":4,"bbox":[82,484,1016,1]}
+{"kind":"textbox","id":"sh/krupsju5","slide":4,"text":"Acompanhamento","textPreview":"Acompanhamento","textChars":14,"textLines":1,"bbox":[82,504,250,26]}
+{"kind":"textbox","id":"sh/7u5onetw","slide":4,"text":"solicitações, responsáveis, notificações e conclusão","textPreview":"solicitações, responsáveis, notificações e conclusão","textChars":52,"textLines":1,"bbox":[370,506,710,26]}
+{"kind":"shape","id":"sh/6tw7u9cb","slide":4,"bbox":[82,546,1016,1]}
+{"kind":"textbox","id":"sh/twn6pob2","slide":4,"text":"Rastreabilidade","textPreview":"Rastreabilidade","textChars":15,"textLines":1,"bbox":[82,566,250,26]}
+{"kind":"textbox","id":"sh/svepwjuh","slide":4,"text":"histórico da operação e relatórios para consulta","textPreview":"histórico da operação e relatórios para consulta","textChars":48,"textLines":1,"bbox":[370,568,710,26]}
+{"kind":"shape","id":"sh/fi5oryts","slide":4,"bbox":[82,608,1016,1]}
+{"kind":"textbox","id":"sh/uhw7ytcn","slide":4,"text":"A operação continua sendo humana. A informação deixa de ficar invisível.","textPreview":"A operação continua sendo humana. A informação deixa de ficar invisível.","textChars":72,"textLines":1,"bbox":[82,648,900,24]}
+{"kind":"textbox","id":"sh/qd0rqxwv","slide":4,"text":"IMMUHEN","textPreview":"IMMUHEN","textChars":7,"textLines":1,"bbox":[72,676,110,18]}
+{"kind":"textbox","id":"sh/be9sj2d0","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1170,676,38,18]}
+{"kind":"notes","id":"nt/smq730","slide":4,"text":"[Sources]\nFuncionalidades sintetizadas a partir das páginas e rotas do sistema ImmuHen no repositório local: Aves, Vacinas, Entradas, Estoque, Programa, Acompanhamento, Solicitações, Rastreabilidade e Relatórios."}
+{"kind":"slide","id":"sl/8mjb4a","slide":5,"title":"O valor","textShapes":11}
+{"kind":"textbox","id":"sh/m9ora9c7","slide":5,"text":"O valor","textPreview":"O valor","textChars":7,"textLines":1,"bbox":[72,58,200,22]}
+{"kind":"textbox","id":"sh/9cfq54bi","slide":5,"text":"Quando a informação flui,\na equipe trabalha melhor.","textPreview":"Quando a informação flui, | a equipe trabalha melhor.","textChars":51,"textLines":2,"bbox":[72,108,650,120]}
+{"kind":"textbox","id":"sh/8b69czud","slide":5,"text":"O ganho não está em ter mais uma tela. Está em dar contexto para a próxima ação.","textPreview":"O ganho não está em ter mais uma tela. Está em dar contexto para a próxima ação.","textChars":80,"textLines":1,"bbox":[76,268,560,58]}
+{"kind":"shape","id":"sh/vyx87eto","slide":5,"bbox":[76,390,44,3]}
+{"kind":"textbox","id":"sh/adore9c3","slide":5,"text":"Clareza","textPreview":"Clareza","textChars":7,"textLines":1,"bbox":[142,384,220,26]}
+{"kind":"textbox","id":"sh/x0za9obu","slide":5,"text":"ver o que está programado, pendente ou concluído","textPreview":"ver o que está programado, pendente ou concluído","textChars":48,"textLines":1,"bbox":[390,386,590,30]}
+{"kind":"shape","id":"sh/wz69gju9","slide":5,"bbox":[76,468,44,3]}
+{"kind":"textbox","id":"sh/j2hsbyt0","slide":5,"text":"Disciplina","textPreview":"Disciplina","textChars":10,"textLines":1,"bbox":[142,462,220,26]}
+{"kind":"textbox","id":"sh/i18ritcf","slide":5,"text":"padronizar registros sem complicar a rotina","textPreview":"padronizar registros sem complicar a rotina","textChars":43,"textLines":1,"bbox":[390,464,590,30]}
+{"kind":"shape","id":"sh/grul8rep","slide":5,"bbox":[76,546,44,3]}
+{"kind":"textbox","id":"sh/hs32hwfa","slide":5,"text":"Confiança","textPreview":"Confiança","textChars":9,"textLines":1,"bbox":[142,540,220,26]}
+{"kind":"textbox","id":"sh/upcj61wj","slide":5,"text":"consultar o histórico quando a decisão exigir","textPreview":"consultar o histórico quando a decisão exigir","textChars":45,"textLines":1,"bbox":[390,542,590,30]}
+{"kind":"textbox","id":"sh/fqlkf6x4","slide":5,"text":"IMMUHEN","textPreview":"IMMUHEN","textChars":7,"textLines":1,"bbox":[72,676,110,18]}
+{"kind":"textbox","id":"sh/4velcbe1","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1170,676,38,18]}
+{"kind":"notes","id":"nt/8mjb4a","slide":5,"text":"[Sources]\nSíntese de valor baseada nas funcionalidades do sistema ImmuHen. Não foram usados indicadores ou percentuais não fornecidos."}
+{"kind":"slide","id":"sl/lqedih","slide":6,"title":"PARA QUEM FAZ ACONTECER","textShapes":11}
+{"kind":"textbox","id":"sh/k3y1wvqh","slide":6,"text":"PARA QUEM FAZ ACONTECER","textPreview":"PARA QUEM FAZ ACONTECER","textChars":23,"textLines":1,"bbox":[72,54,440,22]}
+{"kind":"textbox","id":"sh/l47ip072","slide":6,"text":"Feito para a operação — não para impressionar com complexidade.","textPreview":"Feito para a operação — não para impressionar com complexidade.","textChars":63,"textLines":1,"bbox":[72,94,760,104]}
+{"kind":"textbox","id":"sh/m5gjy58n","slide":6,"text":"A linguagem da granja: objetiva, visual e orientada ao próximo passo.","textPreview":"A linguagem da granja: objetiva, visual e orientada ao próximo passo.","textChars":69,"textLines":1,"bbox":[74,212,680,54]}
+{"kind":"shape","id":"sh/76p0rap8","slide":6,"bbox":[74,348,470,3]}
+{"kind":"textbox","id":"sh/8ry10vqt","slide":6,"text":"Para o responsável técnico","textPreview":"Para o responsável técnico","textChars":26,"textLines":1,"bbox":[74,382,450,28]}
+{"kind":"textbox","id":"sh/9s7it07y","slide":6,"text":"mais visibilidade do programa e do histórico sanitário","textPreview":"mais visibilidade do programa e do histórico sanitário","textChars":54,"textLines":1,"bbox":[76,420,500,28]}
+{"kind":"textbox","id":"sh/utgj258j","slide":6,"text":"Para a equipe de campo","textPreview":"Para a equipe de campo","textChars":22,"textLines":1,"bbox":[74,484,450,28]}
+{"kind":"textbox","id":"sh/vup0vap4","slide":6,"text":"menos dúvida na hora de registrar e executar","textPreview":"menos dúvida na hora de registrar e executar","textChars":44,"textLines":1,"bbox":[76,522,500,28]}
+{"kind":"textbox","id":"sh/nq147udw","slide":6,"text":"Para a gestão","textPreview":"Para a gestão","textChars":13,"textLines":1,"bbox":[74,586,450,28]}
+{"kind":"textbox","id":"sh/2ps3ypcb","slide":6,"text":"uma visão mais organizada do que está acontecendo","textPreview":"uma visão mais organizada do que está acontecendo","textChars":49,"textLines":1,"bbox":[76,624,540,28]}
+{"kind":"textbox","id":"sh/psjm94v2","slide":6,"text":"IMMUHEN","textPreview":"IMMUHEN","textChars":7,"textLines":1,"bbox":[72,676,110,18]}
+{"kind":"textbox","id":"sh/oral0zuh","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1170,676,38,18]}
+{"kind":"image","id":"im/6943qtsj","slide":6,"name":"","alt":"Profissional inspecionando galinha em aviário","bbox":[690,0,590,720]}
+{"kind":"notes","id":"nt/lqedih","slide":6,"text":"[Sources]\nImagem gerada internamente com ImageGen para esta apresentação.\n\nPúblicos e benefícios apresentados como posicionamento do produto, sem prometer resultados numéricos."}
+{"kind":"slide","id":"sl/2kkxmn","slide":7,"title":"IMMUHEN","textShapes":8}
+{"kind":"shape","id":"sh/fmdsjut8","slide":7,"bbox":[72,72,8,540]}
+{"kind":"textbox","id":"sh/0nmtszat","slide":7,"text":"IMMUHEN","textPreview":"IMMUHEN","textChars":7,"textLines":1,"bbox":[126,84,360,36]}
+{"kind":"textbox","id":"sh/1oval4be","slide":7,"text":"Mais controle para a granja.\nMais confiança para o próximo ciclo.","textPreview":"Mais controle para a granja. | Mais confiança para o próximo ciclo.","textChars":65,"textLines":2,"bbox":[126,180,760,156]}
+{"kind":"textbox","id":"sh/2p4bu9sz","slide":7,"text":"Conheça o sistema e leve a gestão sanitária para o centro da operação.","textPreview":"Conheça o sistema e leve a gestão sanitária para o centro da operação.","textChars":70,"textLines":1,"bbox":[130,382,620,54]}
+{"kind":"shape","id":"sh/nqdsnet4","slide":7,"bbox":[130,506,350,58]}
+{"kind":"textbox","id":"sh/ormtwjap","slide":7,"text":"Organize. Acompanhe. Cuide.","textPreview":"Organize. Acompanhe. Cuide.","textChars":27,"textLines":1,"bbox":[148,523,314,22]}
+{"kind":"textbox","id":"sh/psfapoba","slide":7,"text":"Sistema de gestão sanitária avícola","textPreview":"Sistema de gestão sanitária avícola","textChars":35,"textLines":1,"bbox":[130,620,400,20]}
+{"kind":"textbox","id":"sh/atobytsv","slide":7,"text":"IMMUHEN","textPreview":"IMMUHEN","textChars":7,"textLines":1,"bbox":[1030,622,150,20]}
+{"kind":"textbox","id":"sh/buxcretg","slide":7,"text":"IMMUHEN","textPreview":"IMMUHEN","textChars":7,"textLines":1,"bbox":[72,676,110,18]}
+{"kind":"textbox","id":"sh/jm14nyhk","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1170,676,38,18]}
+{"kind":"notes","id":"nt/2kkxmn","slide":7,"text":"[Sources]\nTexto institucional criado para divulgação do sistema ImmuHen.\n\nEncerramento: convidar o público a conhecer o sistema e iniciar uma conversa comercial."}

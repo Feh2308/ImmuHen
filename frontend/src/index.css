@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+:root {
+  --tenant-primary: #16a34a;
+  --tenant-secondary: #dcfce7;
+  --tenant-soft: #f0fdf4;
+}
+
+.bg-green-500,
+.bg-green-600 {
+  background-color: var(--tenant-primary) !important;
+}
+
+.hover\:bg-green-700:hover,
+.bg-green-700 {
+  background-color: color-mix(in srgb, var(--tenant-primary) 84%, #000 16%) !important;
+}
+
+.bg-green-50,
+.bg-green-100 {
+  background-color: color-mix(in srgb, var(--tenant-secondary) 55%, #fff 45%) !important;
+}
+
+.bg-green-900,
+.bg-green-900\/30 {
+  background-color: color-mix(in srgb, var(--tenant-primary) 38%, #111827 62%) !important;
+}
+
+.text-green-300,
+.text-green-500,
+.text-green-600,
+.text-green-700,
+.text-green-800,
+.text-green-900 {
+  color: var(--tenant-primary) !important;
+}
+
+.border-green-100,
+.border-green-200,
+.border-green-500,
+.border-green-700 {
+  border-color: color-mix(in srgb, var(--tenant-primary) 24%, #fff 76%) !important;
+}
+
+.ring-green-100,
+.ring-green-200 {
+  --tw-ring-color: color-mix(in srgb, var(--tenant-primary) 24%, #fff 76%) !important;
+}
+
+.focus\:border-green-500:focus,
+.focus\:border-green-600:focus {
+  border-color: var(--tenant-primary) !important;
+}
+
+.accent-green-600 {
+  accent-color: var(--tenant-primary) !important;
+}
